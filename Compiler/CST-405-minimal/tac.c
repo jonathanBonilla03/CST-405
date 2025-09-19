@@ -125,6 +125,10 @@ void printTAC() {
                 printf("%s = %s + %s", curr->result, curr->arg1, curr->arg2);
                 printf("     // Add: store result in %s\n", curr->result);
                 break;
+            case TAC_MUL:
+                printf("%s = %s * %s", curr->result, curr->arg1, curr->arg2);
+                printf("     // Mul: store result in %s\n", curr->result);
+                break;
             case TAC_ASSIGN:
                 printf("%s = %s", curr->result, curr->arg1);
                 printf("           // Assign value to %s\n", curr->result);
@@ -194,6 +198,43 @@ void optimizeTAC() {
                     newInstr = createTAC(TAC_ASSIGN, resultStr, NULL, curr->result);
                 } else {
                     newInstr = createTAC(TAC_ADD, left, right, curr->result);
+                }
+                break;
+            }
+
+            case TAC_MUL: {
+                // Check if both operands are constants
+                char* left = curr->arg1;
+                char* right = curr->arg2;
+                
+                // Look up values in propagation table (search from most recent)
+                for (int i = valueCount - 1; i >= 0; i--) {
+                    if (strcmp(values[i].var, left) == 0) {
+                        left = values[i].value;
+                        break;
+                    }
+                }
+                for (int i = valueCount - 1; i >= 0; i--) {
+                    if (strcmp(values[i].var, right) == 0) {
+                        right = values[i].value;
+                        break;
+                    }
+                }
+
+                // Constant folding
+                if (isdigit(left[0]) && isdigit(right[0])) {
+                    int result = atoi(left) * atoi(right);
+                    char* resultStr = malloc(20);
+                    sprintf(resultStr, "%d", result);
+
+                    // Store for propagation
+                    values[valueCount].var = strdup(curr->result);
+                    values[valueCount].value = resultStr;
+                    valueCount++;
+
+                    newInstr = createTAC(TAC_ASSIGN, resultStr, NULL, curr->result);
+                } else {
+                    newInstr = createTAC(TAC_MUL, left, right, curr->result);
                 }
                 break;
             }

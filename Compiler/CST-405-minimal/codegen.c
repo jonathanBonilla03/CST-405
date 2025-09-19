@@ -35,8 +35,13 @@ void genExpr(ASTNode* node) {
             int leftReg = tempReg - 1;
             genExpr(node->data.binop.right);
             int rightReg = tempReg - 1;
-            fprintf(output, "    add $t%d, $t%d, $t%d\n", leftReg, leftReg, rightReg);
-            tempReg = leftReg + 1;
+            if (node->data.binop.op == '+') {
+                fprintf(output, "    add $t%d, $t%d, $t%d\n", leftReg, leftReg, rightReg);
+                tempReg = leftReg + 1;
+            } else if (node->data.binop.op == '*') {
+                fprintf(output, "    mul $t%d, $t%d, $t%d\n", leftReg, leftReg, rightReg);
+                tempReg = leftReg + 1;
+            }
             break;
             
         default:

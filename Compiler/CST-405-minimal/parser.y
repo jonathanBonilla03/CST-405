@@ -37,7 +37,9 @@ ASTNode* root = NULL;          /* Root of the Abstract Syntax Tree */
 %type <node> program stmt_list stmt decl assign expr print_stmt
 
 /* OPERATOR PRECEDENCE AND ASSOCIATIVITY */
+%right '=' /* Assignment is right-associative: a=b=c means a=(b=c) */
 %left '+'  /* Addition is left-associative: a+b+c = (a+b)+c */
+%left '*' /* Multiplication is left-associative: a*b*c = (a*b)*c */
 
 %%
 
@@ -102,6 +104,10 @@ expr:
     | expr '+' expr { 
         /* Addition operation - builds binary tree */
         $$ = createBinOp('+', $1, $3);  /* Left child, op, right child */
+    }
+    | expr '*' expr {
+        /* Multiplication operation - builds binary tree */
+        $$ = createBinOp('*', $1, $3);  /* Left child, op, right child */
     }
     ;
 

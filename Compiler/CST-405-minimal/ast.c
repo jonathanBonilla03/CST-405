@@ -27,7 +27,7 @@ ASTNode* createVar(char* name) {
 ASTNode* createBinOp(char op, ASTNode* left, ASTNode* right) {
     ASTNode* node = malloc(sizeof(ASTNode));
     node->type = NODE_BINOP;
-    node->data.binop.op = op;        /* Store operator (+) */
+    node->data.binop.op = op;        /* Store operator (+, *) */
     node->data.binop.left = left;    /* Left subtree */
     node->data.binop.right = right;  /* Right subtree */
     return node;
