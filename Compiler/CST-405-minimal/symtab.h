@@ -13,6 +13,8 @@
 typedef struct {
     char* name;     /* Variable identifier */
     int offset;     /* Stack offset in bytes (for MIPS stack frame) */
+    int isArray;   /* 1 if variable is an array, 0 otherwise */
+    int arraySize; /* Size of the array (0 for regular variables) */
 } Symbol;
 
 /* SYMBOL TABLE STRUCTURE */
@@ -25,6 +27,9 @@ typedef struct {
 /* SYMBOL TABLE OPERATIONS */
 void initSymTab();               /* Initialize empty symbol table */
 int addVar(char* name);          /* Add new variable, returns offset or -1 if duplicate */
+int addArrayVar(char* name, int size); /* Add new array variable, returns offset or -1 if duplicate */
+int isArrayVar(char* name); /* Check if variable is an array (1=yes, 0=no) */
+int getArraySize(char* name); /* Get size of array variable, -1 if not an array or not found */
 int getVarOffset(char* name);    /* Get stack offset for variable, -1 if not found */
 int isVarDeclared(char* name);   /* Check if variable exists (1=yes, 0=no) */
 

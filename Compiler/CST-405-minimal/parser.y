@@ -79,6 +79,11 @@ decl:
         $$ = createDecl($2);  /* $2 is the ID token's string value */
         free($2);             /* Free the string copy from scanner */
     }
+    | INT ID '[' NUM ']' ';' { 
+        /* Array declaration */
+        $$ = createArrayDecl($2, $4);  /* $2 = ID, $4 = array size */
+        free($2);                       /* Free the identifier string */
+    }
     ;
 
 /* ASSIGNMENT RULE - "x = expr;" */

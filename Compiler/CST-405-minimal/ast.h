@@ -15,7 +15,10 @@ typedef enum {
     NODE_DECL,      /* Variable declaration (e.g., int x) */
     NODE_ASSIGN,    /* Assignment statement (e.g., x = 10) */
     NODE_PRINT,     /* Print statement (e.g., print(x)) */
-    NODE_STMT_LIST  /* List of statements (program structure) */
+    NODE_STMT_LIST, /* List of statements (program structure) */
+    NODE_ARRAY_DECL, /* Array declaration (e.g., int arr[10]) */
+    NODE_ARRAY_ASSIGN, /* Array assignment (e.g., arr[0] = 5) */
+    NODE_ARRAY_ACCESS  /* Array access (e.g., arr[0]) */
 } NodeType;
 
 /* AST NODE STRUCTURE
@@ -54,6 +57,23 @@ typedef struct ASTNode {
             struct ASTNode* stmt;       /* Current statement */
             struct ASTNode* next;       /* Rest of the list */
         } stmtlist;
+
+        struct {
+            char* name;                 /* Array name */
+            int size;                   /* Size of the array */
+        } array_decl;
+
+        struct {
+            char* name;                 /* Array name */
+            struct ASTNode* index;      /* Index expression */
+            struct ASTNode* value;      /* Value to assign */
+        } array_assign;
+
+        struct {
+            char* name;                 /* Array name */
+            struct ASTNode* index;      /* Index expression */
+        } array_access;
+
     } data;
 } ASTNode;
 
@@ -67,6 +87,9 @@ ASTNode* createDecl(char* name);                                 /* Create decla
 ASTNode* createAssign(char* var, ASTNode* value);               /* Create assignment node */
 ASTNode* createPrint(ASTNode* expr);                            /* Create print node */
 ASTNode* createStmtList(ASTNode* stmt1, ASTNode* stmt2);        /* Create statement list */
+ASTNode* createArrayDecl(char* name, int size);                 /* Create array declaration node */
+ASTNode* createArrayAssign(char* name, ASTNode* index, ASTNode* value); /* Create array assignment node */
+ASTNode* createArrayAccess(char* name, ASTNode* index);          /* Create array access node */
 
 /* AST DISPLAY FUNCTION */
 void printAST(ASTNode* node, int level);                        /* Pretty-print the AST */

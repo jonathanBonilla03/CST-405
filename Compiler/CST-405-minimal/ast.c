@@ -67,6 +67,34 @@ ASTNode* createStmtList(ASTNode* stmt1, ASTNode* stmt2) {
     return node;
 }
 
+/* Create an array declaration node */
+ASTNode* createArrayDecl(char* name, int size) {
+    ASTNode* node = malloc(sizeof(ASTNode));
+    node->type = NODE_ARRAY_DECL;
+    node->data.array_decl.name = strdup(name);  /* Array name */
+    node->data.array_decl.size = size;           /* Array size */
+    return node;
+}
+
+/* Create an array assignment node */
+ASTNode* createArrayAssign(char* name, ASTNode* index, ASTNode* value) {
+    ASTNode* node = malloc(sizeof(ASTNode));
+    node->type = NODE_ARRAY_ASSIGN;
+    node->data.array_assign.name = strdup(name);  /* Array name */
+    node->data.array_assign.index = index;        /* Index expression */
+    node->data.array_assign.value = value;        /* Value to assign */
+    return node;
+}
+
+/* Create an array access node */
+ASTNode* createArrayAccess(char* name, ASTNode* index) {
+    ASTNode* node = malloc(sizeof(ASTNode));
+    node->type = NODE_ARRAY_ACCESS;
+    node->data.array_access.name = strdup(name);  /* Array name */
+    node->data.array_access.index = index;        /* Index expression */
+    return node;
+}
+
 /* Display the AST structure (for debugging and education) */
 void printAST(ASTNode* node, int level) {
     if (!node) return;
@@ -102,6 +130,21 @@ void printAST(ASTNode* node, int level) {
             /* Print statements in sequence at same level */
             printAST(node->data.stmtlist.stmt, level);
             printAST(node->data.stmtlist.next, level);
+            break;
+        case NODE_ARRAY_DECL:
+            printf("%*sARRAY_DECL: %s[%d]\n", level*2, "", node->data.array_decl.name, node->data.array_decl.size);
+            break;
+        case NODE_ARRAY_ASSIGN:
+            printf("%*sARRAY_ASSIGN: %s[] =\n", level*2, "", node->data.array_assign.name);
+            printf("%*sIndex:\n", level*2, "");
+            printAST(node->data.array_assign.index, level+1);
+            printf("%*sValue:\n", level*2, "");
+            printAST(node->data.array_assign.value, level+1);
+            break;
+        case NODE_ARRAY_ACCESS:
+            printf("%*sARRAY_ACCESS: %s[]\n", level*2, "", node->data.array_access.name);
+            printf("%*sIndex:\n", level*2, "");
+            printAST(node->data.array_access.index, level + 1);
             break;
     }
 }
