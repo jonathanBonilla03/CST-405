@@ -1,0 +1,20 @@
+/* Extended EBNF Grammar */
+program     ::= stmt_list
+stmt_list   ::= stmt | stmt_list stmt
+stmt        ::= decl | assign | print_stmt
+
+/* Updated declaration to support arrays */
+decl        ::= 'int' ID ';'                    // Regular variable
+            |   'int' ID '[' NUM ']' ';'         // Array declaration
+
+/* Updated assignment to support array elements */
+assign      ::= ID '=' expr ';'                 // Regular assignment
+            |   ID '[' expr ']' '=' expr ';'    // Array element assignment
+
+print_stmt  ::= 'print' '(' expr ')' ';'
+
+/* Updated expression to support array access */
+expr        ::= NUM
+            |   ID                              // Variable access
+            |   ID '[' expr ']'                 // Array element access
+            |   expr '+' expr
