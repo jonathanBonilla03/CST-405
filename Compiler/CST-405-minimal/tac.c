@@ -76,7 +76,6 @@ char* generateTACExpr(ASTNode* node) {
             return temp;
         }
 
-        /* ✅ TODO 6C: Array access in expressions */
         case NODE_ARRAY_ACCESS: {
             char* indexExpr = generateTACExpr(node->data.array_access.index);
             char* temp = newTemp();
@@ -159,7 +158,6 @@ void printTAC() {
                 printf("PRINT %s", curr->arg1);
                 printf("          // Output value of %s\n", curr->arg1);
                 break;
-            /* ✅ TODO 6D: New TAC printing */
             case TAC_ARRAY_DECL:
                 printf("ARRAY_DECL %s", curr->result);
                 printf("     // Declare array '%s'\n", curr->result);
@@ -295,7 +293,6 @@ void optimizeTAC() {
                 break;
             }
 
-            /* ✅ TODO 7: Optimization for arrays */
             case TAC_ARRAY_DECL:
                 newInstr = createTAC(TAC_ARRAY_DECL, NULL, NULL, curr->result);
                 break;

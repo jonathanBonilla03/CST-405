@@ -45,25 +45,25 @@ void genExpr(ASTNode* node) {
             break;
         }
 
-        /* ✅ TODO 8B: Array access in expressions */
+        /* Array access in expressions */
         case NODE_ARRAY_ACCESS: {
             if (!isArrayVar(node->data.array_access.name)) {
                 fprintf(stderr, "Error: %s is not an array\n", node->data.array_access.name);
                 exit(1);
             }
 
-            // Generate index expression
+            /* Generate code for index expression */
             genExpr(node->data.array_access.index);
             int indexReg = tempReg - 1;
 
+            /* Calculate array element address and load value */
             int baseOffset = getVarOffset(node->data.array_access.name);
             int resultReg = getNextTemp();
 
             fprintf(output, "    # Array access: %s[index]\n", node->data.array_access.name);
             fprintf(output, "    sll $t%d, $t%d, 2    # index * 4\n", indexReg, indexReg);
             fprintf(output, "    addi $t%d, $sp, %d   # base address\n", resultReg, baseOffset);
-            fprintf(output, "    add $t%d, $t%d, $t%d # element address\n",
-                            resultReg, resultReg, indexReg);
+            fprintf(output, "    add $t%d, $t%d, $t%d # element address\n", resultReg, resultReg, indexReg);
             fprintf(output, "    lw $t%d, 0($t%d)     # load value\n", resultReg, resultReg);
             break;
         }
@@ -99,7 +99,7 @@ void genStmt(ASTNode* node) {
             break;
         }
 
-        /* ✅ TODO 8A: Array declaration */
+        /* Array declaration */
         case NODE_ARRAY_DECL: {
             int offset = addArrayVar(node->data.array_decl.name, node->data.array_decl.size);
             if (offset == -1) {
@@ -111,7 +111,7 @@ void genStmt(ASTNode* node) {
             break;
         }
 
-        /* ✅ TODO 8A: Array assignment */
+        /* Array assignment */
         case NODE_ARRAY_ASSIGN: {
             if (!isArrayVar(node->data.array_assign.name)) {
                 fprintf(stderr, "Error: %s is not an array\n", node->data.array_assign.name);
@@ -128,12 +128,12 @@ void genStmt(ASTNode* node) {
 
             int baseOffset = getVarOffset(node->data.array_assign.name);
             fprintf(output, "    # Array assignment: %s[index] = value\n",
-                node->data.array_assign.name);
+            node->data.array_assign.name);
             fprintf(output, "    sll $t%d, $t%d, 2    # index * 4\n", indexReg, indexReg);
-            fprintf(output, "    addi $t%d, $sp, %d   # base address\n", indexReg, baseOffset);
-            fprintf(output, "    add $t%d, $t%d, $t%d # element address\n",
-                            indexReg, indexReg, indexReg);
+            fprintf(output, "    add $t%d, $sp, $t%d  # base + offset\n", indexReg, indexReg);
+            fprintf(output, "    addi $t%d, $t%d, %d  # apply baseOffset\n", indexReg, indexReg, baseOffset);
             fprintf(output, "    sw $t%d, 0($t%d)     # store value\n", valueReg, indexReg);
+
             tempReg = 0;
             break;
         }

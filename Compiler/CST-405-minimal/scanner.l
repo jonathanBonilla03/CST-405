@@ -37,9 +37,11 @@
 "]"             { return ']'; }
 
 
-[ \t\n]         { }
+[ \t\r\n]         { }
 
+"//"[^\n]*      { /* ignore single-line comments */ }
 .               { printf("Lexical Error: Unknown character '%c'\n", *yytext); }
+
 
 %%
 

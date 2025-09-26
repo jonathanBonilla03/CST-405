@@ -15,8 +15,7 @@ typedef enum {
     TAC_MUL,     /* Multiplication: result = arg1 * arg2 */
     TAC_ASSIGN,  /* Assignment: result = arg1 */
     TAC_PRINT,   /* Print: print(arg1) */
-    TAC_DECL     /* Declaration: declare result */
-    /* TODO: Add array-specific TAC operations */
+    TAC_DECL,     /* Declaration: declare result */
     TAC_ARRAY_DECL,    /* Array declaration: declare array[size] */
     TAC_ARRAY_ASSIGN,  /* Array assignment: array[index] = value */
     TAC_ARRAY_ACCESS   /* Array access: temp = array[index] */

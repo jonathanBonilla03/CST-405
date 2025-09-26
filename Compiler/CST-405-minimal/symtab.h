@@ -32,5 +32,6 @@ int isArrayVar(char* name); /* Check if variable is an array (1=yes, 0=no) */
 int getArraySize(char* name); /* Get size of array variable, -1 if not an array or not found */
 int getVarOffset(char* name);    /* Get stack offset for variable, -1 if not found */
 int isVarDeclared(char* name);   /* Check if variable exists (1=yes, 0=no) */
+void printSymTab();              /* Print current symbol table contents */
 
 #endif

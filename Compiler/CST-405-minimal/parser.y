@@ -93,6 +93,10 @@ assign:
         $$ = createAssign($1, $3);  /* $1 = ID, $3 = expr */
         free($1);                   /* Free the identifier string */
     }
+    | ID '[' expr ']' '=' expr ';' {
+        $$ = createArrayAssign($1, $3, $6);
+        free($1);
+    }
     ;
 
 /* EXPRESSION RULES - Build expression trees */
@@ -105,6 +109,10 @@ expr:
         /* Variable reference */
         $$ = createVar($1);  /* Create leaf node with variable name */
         free($1);            /* Free the identifier string */
+    }
+    | ID '[' expr ']' {
+        $$ = createArrayAccess($1, $3);
+        free($1);
     }
     | expr '+' expr { 
         /* Addition operation - builds binary tree */
