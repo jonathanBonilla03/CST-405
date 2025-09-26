@@ -16,6 +16,10 @@ typedef enum {
     TAC_ASSIGN,  /* Assignment: result = arg1 */
     TAC_PRINT,   /* Print: print(arg1) */
     TAC_DECL     /* Declaration: declare result */
+    /* TODO: Add array-specific TAC operations */
+    TAC_ARRAY_DECL,    /* Array declaration: declare array[size] */
+    TAC_ARRAY_ASSIGN,  /* Array assignment: array[index] = value */
+    TAC_ARRAY_ACCESS   /* Array access: temp = array[index] */
 } TACOp;
 
 /* TAC INSTRUCTION STRUCTURE */

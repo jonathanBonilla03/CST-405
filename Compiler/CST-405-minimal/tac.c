@@ -69,8 +69,18 @@ char* generateTACExpr(ASTNode* node) {
             
             if (node->data.binop.op == '+') {
                 appendTAC(createTAC(TAC_ADD, left, right, temp));
+            } else if (node->data.binop.op == '*') {
+                appendTAC(createTAC(TAC_MUL, left, right, temp));
             }
             
+            return temp;
+        }
+
+        /* ✅ TODO 6C: Array access in expressions */
+        case NODE_ARRAY_ACCESS: {
+            char* indexExpr = generateTACExpr(node->data.array_access.index);
+            char* temp = newTemp();
+            appendTAC(createTAC(TAC_ARRAY_ACCESS, indexExpr, NULL, temp));
             return temp;
         }
         
@@ -103,6 +113,18 @@ void generateTAC(ASTNode* node) {
             generateTAC(node->data.stmtlist.stmt);
             generateTAC(node->data.stmtlist.next);
             break;
+
+        case NODE_ARRAY_DECL:
+            appendTAC(createTAC(TAC_ARRAY_DECL, NULL, NULL, node->data.array_decl.name));
+            break;
+
+        case NODE_ARRAY_ASSIGN: {
+            char* indexExpr = generateTACExpr(node->data.array_assign.index);
+            char* valueExpr = generateTACExpr(node->data.array_assign.value);
+            appendTAC(createTAC(TAC_ARRAY_ASSIGN, indexExpr, valueExpr,
+                                node->data.array_assign.name));
+            break;
+        }
             
         default:
             break;
@@ -137,6 +159,19 @@ void printTAC() {
                 printf("PRINT %s", curr->arg1);
                 printf("          // Output value of %s\n", curr->arg1);
                 break;
+            /* ✅ TODO 6D: New TAC printing */
+            case TAC_ARRAY_DECL:
+                printf("ARRAY_DECL %s", curr->result);
+                printf("     // Declare array '%s'\n", curr->result);
+                break;
+            case TAC_ARRAY_ASSIGN:
+                printf("%s[%s] = %s", curr->result, curr->arg1, curr->arg2);
+                printf("   // Array assignment\n");
+                break;
+            case TAC_ARRAY_ACCESS:
+                printf("%s = array[%s]", curr->result, curr->arg1);
+                printf("  // Array access\n");
+                break;
             default:
                 break;
         }
@@ -148,7 +183,6 @@ void printTAC() {
 void optimizeTAC() {
     TACInstr* curr = tacList.head;
     
-    // Copy propagation table
     typedef struct {
         char* var;
         char* value;
@@ -166,11 +200,9 @@ void optimizeTAC() {
                 break;
                 
             case TAC_ADD: {
-                // Check if both operands are constants
                 char* left = curr->arg1;
                 char* right = curr->arg2;
                 
-                // Look up values in propagation table (search from most recent)
                 for (int i = valueCount - 1; i >= 0; i--) {
                     if (strcmp(values[i].var, left) == 0) {
                         left = values[i].value;
@@ -184,13 +216,11 @@ void optimizeTAC() {
                     }
                 }
                 
-                // Constant folding
                 if (isdigit(left[0]) && isdigit(right[0])) {
                     int result = atoi(left) + atoi(right);
                     char* resultStr = malloc(20);
                     sprintf(resultStr, "%d", result);
                     
-                    // Store for propagation
                     values[valueCount].var = strdup(curr->result);
                     values[valueCount].value = resultStr;
                     valueCount++;
@@ -203,11 +233,9 @@ void optimizeTAC() {
             }
 
             case TAC_MUL: {
-                // Check if both operands are constants
                 char* left = curr->arg1;
                 char* right = curr->arg2;
                 
-                // Look up values in propagation table (search from most recent)
                 for (int i = valueCount - 1; i >= 0; i--) {
                     if (strcmp(values[i].var, left) == 0) {
                         left = values[i].value;
@@ -221,13 +249,11 @@ void optimizeTAC() {
                     }
                 }
 
-                // Constant folding
                 if (isdigit(left[0]) && isdigit(right[0])) {
                     int result = atoi(left) * atoi(right);
                     char* resultStr = malloc(20);
                     sprintf(resultStr, "%d", result);
 
-                    // Store for propagation
                     values[valueCount].var = strdup(curr->result);
                     values[valueCount].value = resultStr;
                     valueCount++;
@@ -242,7 +268,6 @@ void optimizeTAC() {
             case TAC_ASSIGN: {
                 char* value = curr->arg1;
                 
-                // Look up value in propagation table (search from most recent)
                 for (int i = valueCount - 1; i >= 0; i--) {
                     if (strcmp(values[i].var, value) == 0) {
                         value = values[i].value;
@@ -250,7 +275,6 @@ void optimizeTAC() {
                     }
                 }
                 
-                // Store for propagation
                 values[valueCount].var = strdup(curr->result);
                 values[valueCount].value = strdup(value);
                 valueCount++;
@@ -261,16 +285,53 @@ void optimizeTAC() {
             
             case TAC_PRINT: {
                 char* value = curr->arg1;
-                
-                // Look up value in propagation table
-                for (int i = valueCount - 1; i >= 0; i--) {  // Search from most recent
+                for (int i = valueCount - 1; i >= 0; i--) {
                     if (strcmp(values[i].var, value) == 0) {
                         value = values[i].value;
                         break;
                     }
                 }
-                
                 newInstr = createTAC(TAC_PRINT, value, NULL, NULL);
+                break;
+            }
+
+            /* ✅ TODO 7: Optimization for arrays */
+            case TAC_ARRAY_DECL:
+                newInstr = createTAC(TAC_ARRAY_DECL, NULL, NULL, curr->result);
+                break;
+
+            case TAC_ARRAY_ASSIGN: {
+                char* index = curr->arg1;
+                char* value = curr->arg2;
+
+                for (int i = valueCount - 1; i >= 0; i--) {
+                    if (strcmp(values[i].var, index) == 0) {
+                        index = values[i].value;
+                        break;
+                    }
+                }
+                for (int i = valueCount - 1; i >= 0; i--) {
+                    if (strcmp(values[i].var, value) == 0) {
+                        value = values[i].value;
+                        break;
+                    }
+                }
+
+                newInstr = createTAC(TAC_ARRAY_ASSIGN, index, value, curr->result);
+                break;
+            }
+
+            case TAC_ARRAY_ACCESS: {
+                char* index = curr->arg1;
+
+                for (int i = valueCount - 1; i >= 0; i--) {
+                    if (strcmp(values[i].var, index) == 0) {
+                        index = values[i].value;
+                        break;
+                    }
+                }
+
+                newInstr = createTAC(TAC_ARRAY_ACCESS, index, NULL, curr->result);
                 break;
             }
         }
@@ -295,26 +356,22 @@ void printOptimizedTAC() {
                 printf("DECL %s\n", curr->result);
                 break;
             case TAC_ADD:
-                printf("%s = %s + %s", curr->result, curr->arg1, curr->arg2);
-                printf("     // Runtime addition needed\n");
+                printf("%s = %s + %s\n", curr->result, curr->arg1, curr->arg2);
                 break;
             case TAC_ASSIGN:
-                printf("%s = %s", curr->result, curr->arg1);
-                // Check if it's a constant
-                if (curr->arg1[0] >= '0' && curr->arg1[0] <= '9') {
-                    printf("           // Constant value: %s\n", curr->arg1);
-                } else {
-                    printf("           // Copy value\n");
-                }
+                printf("%s = %s\n", curr->result, curr->arg1);
                 break;
             case TAC_PRINT:
-                printf("PRINT %s", curr->arg1);
-                // Check if it's a constant
-                if (curr->arg1[0] >= '0' && curr->arg1[0] <= '9') {
-                    printf("          // Print constant: %s\n", curr->arg1);
-                } else {
-                    printf("          // Print variable\n");
-                }
+                printf("PRINT %s\n", curr->arg1);
+                break;
+            case TAC_ARRAY_DECL:
+                printf("ARRAY_DECL %s\n", curr->result);
+                break;
+            case TAC_ARRAY_ASSIGN:
+                printf("%s[%s] = %s\n", curr->result, curr->arg1, curr->arg2);
+                break;
+            case TAC_ARRAY_ACCESS:
+                printf("%s = array[%s]\n", curr->result, curr->arg1);
                 break;
             default:
                 break;
