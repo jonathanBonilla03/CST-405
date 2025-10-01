@@ -15,6 +15,14 @@ ASTNode* createNum(int value) {
     return node;
 }
 
+/* Create a float literal node */
+ASTNode* createFloat(float value) {
+    ASTNode* node = malloc(sizeof(ASTNode));
+    node->type = NODE_FLOAT;
+    node->data.decimal = value;  /* Store the float value */
+    return node;
+}
+
 /* Create a variable reference node */
 ASTNode* createVar(char* name) {
     ASTNode* node = malloc(sizeof(ASTNode));
@@ -106,6 +114,9 @@ void printAST(ASTNode* node, int level) {
     switch(node->type) {
         case NODE_NUM:
             printf("NUM: %d\n", node->data.num);
+            break;
+        case NODE_FLOAT:
+            printf("FLOAT: %f\n", node->data.decimal);
             break;
         case NODE_VAR:
             printf("VAR: %s\n", node->data.name);

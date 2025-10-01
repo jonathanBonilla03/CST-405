@@ -15,6 +15,7 @@
 %%
 
 "int"           { return INT; }
+"float"           { return FLOAT; }
 "print"         { return PRINT; }
 
 [a-zA-Z_][a-zA-Z0-9_]* { 
@@ -27,6 +28,11 @@
     return NUM; 
 }
 
+[0-9]+\.[0-9]+   { 
+    yylval.floats = atof(yytext);
+    return FLOAT; 
+}
+
 "+"             { return '+'; }
 "*"             { return '*'; }
 "="             { return '='; }
@@ -35,6 +41,8 @@
 ")"             { return ')'; }
 "["             { return '['; }
 "]"             { return ']'; }
+"/"             { return '/'; }
+"%"             { return '%'; }
 
 
 [ \t\r\n]         { }

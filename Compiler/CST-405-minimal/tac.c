@@ -58,6 +58,11 @@ char* generateTACExpr(ASTNode* node) {
             sprintf(temp, "%d", node->data.num);
             return temp;
         }
+        case NODE_FLOAT: {
+            char* temp = malloc(20);
+            sprintf(temp, "%f", node->data.decimal);
+            return temp;
+        }
         
         case NODE_VAR:
             return strdup(node->data.name);
@@ -230,6 +235,39 @@ void optimizeTAC() {
                 break;
             }
 
+            case TAC_SUB: {
+                char* left = curr->arg1;
+                char* right = curr->arg2;
+                
+                for (int i = valueCount - 1; i >= 0; i--) {
+                    if (strcmp(values[i].var, left) == 0) {
+                        left = values[i].value;
+                        break;
+                    }
+                }
+                for (int i = valueCount - 1; i >= 0; i--) {
+                    if (strcmp(values[i].var, right) == 0) {
+                        right = values[i].value;
+                        break;
+                    }
+                }
+
+                if (isdigit(left[0]) && isdigit(right[0])) {
+                    int result = atoi(left) - atoi(right);
+                    char* resultStr = malloc(20);
+                    sprintf(resultStr, "%d", result);
+
+                    values[valueCount].var = strdup(curr->result);
+                    values[valueCount].value = resultStr;
+                    valueCount++;
+
+                    newInstr = createTAC(TAC_ASSIGN, resultStr, NULL, curr->result);
+                } else {
+                    newInstr = createTAC(TAC_SUB, left, right, curr->result);
+                }
+                break;
+            }
+
             case TAC_MUL: {
                 char* left = curr->arg1;
                 char* right = curr->arg2;
@@ -259,6 +297,72 @@ void optimizeTAC() {
                     newInstr = createTAC(TAC_ASSIGN, resultStr, NULL, curr->result);
                 } else {
                     newInstr = createTAC(TAC_MUL, left, right, curr->result);
+                }
+                break;
+            }
+
+            case TAC_DIV: {
+                char* left = curr->arg1;
+                char* right = curr->arg2;
+                
+                for (int i = valueCount - 1; i >= 0; i--) {
+                    if (strcmp(values[i].var, left) == 0) {
+                        left = values[i].value;
+                        break;
+                    }
+                }
+                for (int i = valueCount - 1; i >= 0; i--) {
+                    if (strcmp(values[i].var, right) == 0) {
+                        right = values[i].value;
+                        break;
+                    }
+                }
+
+                if (isdigit(left[0]) && isdigit(right[0]) && atoi(right) != 0) {
+                    int result = atoi(left) / atoi(right);
+                    char* resultStr = malloc(20);
+                    sprintf(resultStr, "%d", result);
+
+                    values[valueCount].var = strdup(curr->result);
+                    values[valueCount].value = resultStr;
+                    valueCount++;
+
+                    newInstr = createTAC(TAC_ASSIGN, resultStr, NULL, curr->result);
+                } else {
+                    newInstr = createTAC(TAC_DIV, left, right, curr->result);
+                }
+                break;
+            }
+
+            case TAC_MOD: {
+                char* left = curr->arg1;
+                char* right = curr->arg2;
+                
+                for (int i = valueCount - 1; i >= 0; i--) {
+                    if (strcmp(values[i].var, left) == 0) {
+                        left = values[i].value;
+                        break;
+                    }
+                }
+                for (int i = valueCount - 1; i >= 0; i--) {
+                    if (strcmp(values[i].var, right) == 0) {
+                        right = values[i].value;
+                        break;
+                    }
+                }
+
+                if (isdigit(left[0]) && isdigit(right[0]) && atoi(right) != 0) {
+                    int result = atoi(left) % atoi(right);
+                    char* resultStr = malloc(20);
+                    sprintf(resultStr, "%d", result);
+
+                    values[valueCount].var = strdup(curr->result);
+                    values[valueCount].value = resultStr;
+                    valueCount++;
+
+                    newInstr = createTAC(TAC_ASSIGN, resultStr, NULL, curr->result);
+                } else {
+                    newInstr = createTAC(TAC_MOD, left, right, curr->result);
                 }
                 break;
             }

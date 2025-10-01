@@ -10,6 +10,7 @@
 /* NODE TYPES - Different kinds of AST nodes in our language */
 typedef enum {
     NODE_NUM,       /* Numeric literal (e.g., 42) */
+    NODE_FLOAT,    /* Float literal (e.g., 3.14) */
     NODE_VAR,       /* Variable reference (e.g., x) */
     NODE_BINOP,     /* Binary operation (e.g., x + y) */
     NODE_DECL,      /* Variable declaration (e.g., int x) */
@@ -32,7 +33,9 @@ typedef struct ASTNode {
     union {
         /* Literal number value (NODE_NUM) */
         int num;
-        
+        /* Literal float value (NODE_FLOAT) */
+        float decimal;
+
         /* Variable or declaration name (NODE_VAR, NODE_DECL) */
         char* name;
         
@@ -81,6 +84,7 @@ typedef struct ASTNode {
  * These functions are called by the parser to build the tree
  */
 ASTNode* createNum(int value);                                   /* Create number node */
+ASTNode* createFloat(float value);                               /* Create float node */
 ASTNode* createVar(char* name);                                  /* Create variable node */
 ASTNode* createBinOp(char op, ASTNode* left, ASTNode* right);   /* Create binary op node */
 ASTNode* createDecl(char* name);                                 /* Create declaration node */

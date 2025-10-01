@@ -24,12 +24,14 @@ ASTNode* root = NULL;          /* Root of the Abstract Syntax Tree */
  */
 %union {
     int num;                /* For integer literals */
+    float floats;          /* For float literals */
     char* str;              /* For identifiers */
     struct ASTNode* node;   /* For AST nodes */
 }
 
 /* TOKEN DECLARATIONS with their semantic value types */
 %token <num> NUM        /* Number token carries an integer value */
+%token <floats> FLOAT      /* Float token carries a float value */
 %token <str> ID         /* Identifier token carries a string */
 %token INT PRINT        /* Keywords have no semantic value */
 
@@ -38,8 +40,8 @@ ASTNode* root = NULL;          /* Root of the Abstract Syntax Tree */
 
 /* OPERATOR PRECEDENCE AND ASSOCIATIVITY */
 %right '=' /* Assignment is right-associative: a=b=c means a=(b=c) */
-%left '+'  /* Addition is left-associative: a+b+c = (a+b)+c */
-%left '*' /* Multiplication is left-associative: a*b*c = (a*b)*c */
+%left '+' '-'  /* Addition and subtraction are left-associative: a+b-c = (a+b)-c */
+%left '*' '/' /* Multiplication and division are left-associative: a*b/c = (a*b)/c */
 
 %%
 
@@ -84,6 +86,11 @@ decl:
         $$ = createArrayDecl($2, $4);  /* $2 = ID, $4 = array size */
         free($2);                       /* Free the identifier string */
     }
+    | FLOAT ID ';' { 
+        /* Create declaration node and free the identifier string */
+        $$ = createDecl($2);  /* $2 is the ID token's string value */
+        free($2);             /* Free the string copy from scanner */
+    }
     ;
 
 /* ASSIGNMENT RULE - "x = expr;" */
@@ -105,6 +112,10 @@ expr:
         /* Literal number */
         $$ = createNum($1);  /* Create leaf node with number value */
     }
+    | FLOAT {
+        /* Literal float */
+        $$ = createFloat($1);  /* Create leaf node with float value */
+    }
     | ID { 
         /* Variable reference */
         $$ = createVar($1);  /* Create leaf node with variable name */
@@ -118,9 +129,21 @@ expr:
         /* Addition operation - builds binary tree */
         $$ = createBinOp('+', $1, $3);  /* Left child, op, right child */
     }
+    | expr '-' expr { 
+        /* Subtraction operation - builds binary tree */
+        $$ = createBinOp('-', $1, $3);  /* Left child, op, right child */
+    }
     | expr '*' expr {
         /* Multiplication operation - builds binary tree */
         $$ = createBinOp('*', $1, $3);  /* Left child, op, right child */
+    }
+    | expr '/' expr {
+        /* Division operation - builds binary tree */
+        $$ = createBinOp('/', $1, $3);  /* Left child, op, right child */
+    }
+    | expr '%' expr {
+        /* Modulus operation - builds binary tree */
+        $$ = createBinOp('%', $1, $3);  /* Left child, op, right child */
     }
     ;
 
