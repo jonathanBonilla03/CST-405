@@ -6,6 +6,17 @@
 
 TACList tacList;
 TACList optimizedList;
+OptimizationStats opt_stats = {0};
+
+int isConstant(const char* s) {
+    if (!s) return 0;
+    if (!isdigit(s[0]) && !(s[0] == '-' && isdigit(s[1]))) return 0;
+    for (int i = 1; s[i]; i++) {
+        if (!isdigit(s[i])) return 0;
+    }
+    return 1;
+}
+
 
 void initTAC() {
     tacList.head = NULL;
@@ -13,6 +24,81 @@ void initTAC() {
     tacList.tempCount = 0;
     optimizedList.head = NULL;
     optimizedList.tail = NULL;
+}
+
+void optimizeTAC() {
+    TACInstr* current = tacList.head;
+
+    while (current && current->next) {
+        // Pattern 1: Constant folding
+        // t0 = 5; t1 = 10; t2 = t0 + t1; => t2 = 15;
+        if (current->op == TAC_ASSIGN &&
+            current->next->op == TAC_ASSIGN &&
+            isConstant(current->arg1) &&
+            isConstant(current->next->arg1)) {
+
+            TACInstr* third = current->next->next;
+            if (third && third->op == TAC_ADD &&
+                strcmp(third->arg1, current->result) == 0 &&
+                strcmp(third->arg2, current->next->result) == 0) {
+
+                int val1 = atoi(current->arg1);
+                int val2 = atoi(current->next->arg1);
+                char buffer[20];
+                sprintf(buffer, "%d", val1 + val2);
+
+                // Replace with single assignment
+                third->op = TAC_ASSIGN;
+                third->arg1 = strdup(buffer);
+                third->arg2 = NULL;
+
+                // Remove redundant instructions
+                current->op = TAC_NOP;  // Mark for removal
+                current->next->op = TAC_NOP;
+
+                opt_stats.constant_folded++;
+            }
+        }
+
+        // Pattern 2: Copy propagation
+        // t0 = x; y = t0; => y = x;
+        if (current->op == TAC_ASSIGN &&
+            current->next->op == TAC_ASSIGN &&
+            strcmp(current->next->arg1, current->result) == 0) {
+
+            current->next->arg1 = strdup(current->arg1);
+            current->op = TAC_NOP;
+            opt_stats.eliminated_temps++;
+        }
+
+        current = current->next;
+    }
+
+    // Remove NOP instructions
+    removeNOPs();
+}
+
+void removeNOPs() {
+    TACInstr* current = tacList.head;
+    TACInstr* prev = NULL;
+
+    while (current) {
+        if (current->op == TAC_NOP) {
+            TACInstr* toDelete = current;
+            if (prev) {
+                prev->next = current->next;
+                current = current->next;
+            } else {
+                tacList.head = current->next;
+                current = current->next;
+            }
+            opt_stats.dead_code_removed++;
+            // Note: In production, should free toDelete
+        } else {
+            prev = current;
+            current = current->next;
+        }
+    }
 }
 
 char* newTemp() {
@@ -178,269 +264,6 @@ void printTAC() {
             default:
                 break;
         }
-        curr = curr->next;
-    }
-}
-
-// Simple optimization: constant folding and copy propagation
-void optimizeTAC() {
-    TACInstr* curr = tacList.head;
-    
-    typedef struct {
-        char* var;
-        char* value;
-    } VarValue;
-    
-    VarValue values[100];
-    int valueCount = 0;
-    
-    while (curr) {
-        TACInstr* newInstr = NULL;
-        
-        switch(curr->op) {
-            case TAC_DECL:
-                newInstr = createTAC(TAC_DECL, NULL, NULL, curr->result);
-                break;
-                
-            case TAC_ADD: {
-                char* left = curr->arg1;
-                char* right = curr->arg2;
-                
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, left) == 0) {
-                        left = values[i].value;
-                        break;
-                    }
-                }
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, right) == 0) {
-                        right = values[i].value;
-                        break;
-                    }
-                }
-                
-                if (isdigit(left[0]) && isdigit(right[0])) {
-                    int result = atoi(left) + atoi(right);
-                    char* resultStr = malloc(20);
-                    sprintf(resultStr, "%d", result);
-                    
-                    values[valueCount].var = strdup(curr->result);
-                    values[valueCount].value = resultStr;
-                    valueCount++;
-                    
-                    newInstr = createTAC(TAC_ASSIGN, resultStr, NULL, curr->result);
-                } else {
-                    newInstr = createTAC(TAC_ADD, left, right, curr->result);
-                }
-                break;
-            }
-
-            case TAC_SUB: {
-                char* left = curr->arg1;
-                char* right = curr->arg2;
-                
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, left) == 0) {
-                        left = values[i].value;
-                        break;
-                    }
-                }
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, right) == 0) {
-                        right = values[i].value;
-                        break;
-                    }
-                }
-
-                if (isdigit(left[0]) && isdigit(right[0])) {
-                    int result = atoi(left) - atoi(right);
-                    char* resultStr = malloc(20);
-                    sprintf(resultStr, "%d", result);
-
-                    values[valueCount].var = strdup(curr->result);
-                    values[valueCount].value = resultStr;
-                    valueCount++;
-
-                    newInstr = createTAC(TAC_ASSIGN, resultStr, NULL, curr->result);
-                } else {
-                    newInstr = createTAC(TAC_SUB, left, right, curr->result);
-                }
-                break;
-            }
-
-            case TAC_MUL: {
-                char* left = curr->arg1;
-                char* right = curr->arg2;
-                
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, left) == 0) {
-                        left = values[i].value;
-                        break;
-                    }
-                }
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, right) == 0) {
-                        right = values[i].value;
-                        break;
-                    }
-                }
-
-                if (isdigit(left[0]) && isdigit(right[0])) {
-                    int result = atoi(left) * atoi(right);
-                    char* resultStr = malloc(20);
-                    sprintf(resultStr, "%d", result);
-
-                    values[valueCount].var = strdup(curr->result);
-                    values[valueCount].value = resultStr;
-                    valueCount++;
-
-                    newInstr = createTAC(TAC_ASSIGN, resultStr, NULL, curr->result);
-                } else {
-                    newInstr = createTAC(TAC_MUL, left, right, curr->result);
-                }
-                break;
-            }
-
-            case TAC_DIV: {
-                char* left = curr->arg1;
-                char* right = curr->arg2;
-                
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, left) == 0) {
-                        left = values[i].value;
-                        break;
-                    }
-                }
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, right) == 0) {
-                        right = values[i].value;
-                        break;
-                    }
-                }
-
-                if (isdigit(left[0]) && isdigit(right[0]) && atoi(right) != 0) {
-                    int result = atoi(left) / atoi(right);
-                    char* resultStr = malloc(20);
-                    sprintf(resultStr, "%d", result);
-
-                    values[valueCount].var = strdup(curr->result);
-                    values[valueCount].value = resultStr;
-                    valueCount++;
-
-                    newInstr = createTAC(TAC_ASSIGN, resultStr, NULL, curr->result);
-                } else {
-                    newInstr = createTAC(TAC_DIV, left, right, curr->result);
-                }
-                break;
-            }
-
-            case TAC_MOD: {
-                char* left = curr->arg1;
-                char* right = curr->arg2;
-                
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, left) == 0) {
-                        left = values[i].value;
-                        break;
-                    }
-                }
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, right) == 0) {
-                        right = values[i].value;
-                        break;
-                    }
-                }
-
-                if (isdigit(left[0]) && isdigit(right[0]) && atoi(right) != 0) {
-                    int result = atoi(left) % atoi(right);
-                    char* resultStr = malloc(20);
-                    sprintf(resultStr, "%d", result);
-
-                    values[valueCount].var = strdup(curr->result);
-                    values[valueCount].value = resultStr;
-                    valueCount++;
-
-                    newInstr = createTAC(TAC_ASSIGN, resultStr, NULL, curr->result);
-                } else {
-                    newInstr = createTAC(TAC_MOD, left, right, curr->result);
-                }
-                break;
-            }
-            
-            case TAC_ASSIGN: {
-                char* value = curr->arg1;
-                
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, value) == 0) {
-                        value = values[i].value;
-                        break;
-                    }
-                }
-                
-                values[valueCount].var = strdup(curr->result);
-                values[valueCount].value = strdup(value);
-                valueCount++;
-                
-                newInstr = createTAC(TAC_ASSIGN, value, NULL, curr->result);
-                break;
-            }
-            
-            case TAC_PRINT: {
-                char* value = curr->arg1;
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, value) == 0) {
-                        value = values[i].value;
-                        break;
-                    }
-                }
-                newInstr = createTAC(TAC_PRINT, value, NULL, NULL);
-                break;
-            }
-
-            case TAC_ARRAY_DECL:
-                newInstr = createTAC(TAC_ARRAY_DECL, NULL, NULL, curr->result);
-                break;
-
-            case TAC_ARRAY_ASSIGN: {
-                char* index = curr->arg1;
-                char* value = curr->arg2;
-
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, index) == 0) {
-                        index = values[i].value;
-                        break;
-                    }
-                }
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, value) == 0) {
-                        value = values[i].value;
-                        break;
-                    }
-                }
-
-                newInstr = createTAC(TAC_ARRAY_ASSIGN, index, value, curr->result);
-                break;
-            }
-
-            case TAC_ARRAY_ACCESS: {
-                char* index = curr->arg1;
-
-                for (int i = valueCount - 1; i >= 0; i--) {
-                    if (strcmp(values[i].var, index) == 0) {
-                        index = values[i].value;
-                        break;
-                    }
-                }
-
-                newInstr = createTAC(TAC_ARRAY_ACCESS, index, NULL, curr->result);
-                break;
-            }
-        }
-        
-        if (newInstr) {
-            appendOptimizedTAC(newInstr);
-        }
-        
         curr = curr->next;
     }
 }

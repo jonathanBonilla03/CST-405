@@ -1,125 +1,166 @@
-/* SYMBOL TABLE IMPLEMENTATION
- * Manages variable declarations and lookups
- * Essential for semantic analysis (checking if variables are declared)
- * Provides memory layout information for code generation
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "symtab.h"
 
-/* Global symbol table instance */
+/* Define the global symbol table */
 SymbolTable symtab;
 
 /* Initialize an empty symbol table */
 void initSymTab() {
-    symtab.count = 0;       /* No variables yet */
-    symtab.nextOffset = 0;  /* Start at stack offset 0 */
+    for (int i = 0; i < HASH_SIZE; i++) {
+        symtab.buckets[i] = NULL;
+    }
+    symtab.count = 0;
+    symtab.nextOffset = 0;
+    symtab.lookups = 0;
+    symtab.collisions = 0;
     printf("SYMBOL TABLE: Initialized\n");
     printSymTab();
 }
 
 /* Add a new variable to the symbol table */
 int addVar(char* name) {
+    unsigned int h = hash(name);
+    Symbol* curr = symtab.buckets[h];
+
     /* Check for duplicate declaration */
-    if (isVarDeclared(name)) {
-        return -1;  /* Error: variable already exists */
+    while (curr) {
+        if (strcmp(curr->name, name) == 0) {
+            return -1;  /* already exists */
+        }
+        curr = curr->next;
     }
-    
-    /* Add new symbol entry */
-    symtab.vars[symtab.count].name = strdup(name);
-    symtab.vars[symtab.count].offset = symtab.nextOffset;
-    
-    /* Advance offset by 4 bytes (size of int in MIPS) */
-    symtab.nextOffset += 4;
+
+    /* Create a new symbol */
+    Symbol* sym = malloc(sizeof(Symbol));
+    sym->name = strdup(name);
+    sym->offset = symtab.nextOffset;
+    sym->isArray = 0;
+    sym->arraySize = 0;
+    sym->next = symtab.buckets[h];
+
+    /* Insert into bucket */
+    if (symtab.buckets[h] != NULL) {
+        symtab.collisions++;
+    }
+    symtab.buckets[h] = sym;
+
+    symtab.nextOffset += 4; /* size of int */
     symtab.count++;
 
-    printf("SYMBOL TABLE: Added variable '%s' at offset %d\n", name, symtab.vars[symtab.count - 1].offset);
+    printf("SYMBOL TABLE: Added variable '%s' at offset %d\n", 
+           name, sym->offset);
     printSymTab();
-    
-    /* Return the offset for this variable */
-    return symtab.vars[symtab.count - 1].offset;
+
+    return sym->offset;
 }
 
 int addArrayVar(char* name, int size) {
-    /* Check for duplicate declaration */
-    if (isVarDeclared(name)) {
-        printf("SYMBOL TABLE: Failed to add array '%s' - already declared\n", name);
-        return -1;  /* Error: variable already exists */
+    unsigned int h = hash(name);
+    Symbol* curr = symtab.buckets[h];
+
+    while (curr) {
+        if (strcmp(curr->name, name) == 0) {
+            printf("SYMBOL TABLE: Failed to add array '%s' - already declared\n", name);
+            return -1;
+        }
+        curr = curr->next;
     }
-    
-    /* Add new symbol entry */
-    symtab.vars[symtab.count].name = strdup(name);
-    symtab.vars[symtab.count].offset = symtab.nextOffset;
-    symtab.vars[symtab.count].isArray = 1;  /* Mark as array */
-    symtab.vars[symtab.count].arraySize = size; /* Store array size */
-    
-    /* Advance offset by size * 4 bytes (size of int in MIPS) */
+
+    Symbol* sym = malloc(sizeof(Symbol));
+    sym->name = strdup(name);
+    sym->offset = symtab.nextOffset;
+    sym->isArray = 1;
+    sym->arraySize = size;
+    sym->next = symtab.buckets[h];
+
+    if (symtab.buckets[h] != NULL) {
+        symtab.collisions++;
+    }
+    symtab.buckets[h] = sym;
+
     symtab.nextOffset += size * 4;
     symtab.count++;
 
     printf("SYMBOL TABLE: Added array '%s[%d]' at offset %d\n",
-           name, size, symtab.vars[symtab.count - 1].offset);
+           name, size, sym->offset);
     printSymTab();
-    
-    /* Return the offset for this array variable */
-    return symtab.vars[symtab.count - 1].offset;
+
+    return sym->offset;
 }
 
 int isArrayVar(char* name) {
-    for (int i = 0; i < symtab.count; i++) {
-        if (strcmp(symtab.vars[i].name, name) == 0) {
-            return symtab.vars[i].isArray;  /* Return 1 if array, 0 if not */
+    unsigned int h = hash(name);
+    Symbol* curr = symtab.buckets[h];
+    while (curr) {
+        if (strcmp(curr->name, name) == 0) {
+            return curr->isArray;
         }
+        curr = curr->next;
     }
-    return 0;  /* Not found, treat as non-array */
+    return 0;
 }
 
 int getArraySize(char* name) {
-    for (int i = 0; i < symtab.count; i++) {
-        if (strcmp(symtab.vars[i].name, name) == 0) {
-            if (symtab.vars[i].isArray) {
-                return symtab.vars[i].arraySize;  /* Return array size */
-            } else {
-                return -1;  /* Not an array */
-            }
+    unsigned int h = hash(name);
+    Symbol* curr = symtab.buckets[h];
+    while (curr) {
+        if (strcmp(curr->name, name) == 0) {
+            return curr->isArray ? curr->arraySize : -1;
         }
+        curr = curr->next;
     }
-    return 0;  /* Not found */
+    return 0;  /* not found */
 }
 
 /* Look up a variable's stack offset */
 int getVarOffset(char* name) {
-    /* Linear search through symbol table */
-    for (int i = 0; i < symtab.count; i++) {
-        if (strcmp(symtab.vars[i].name, name) == 0) {
-            return symtab.vars[i].offset;  /* Found it */
+    symtab.lookups++;
+    unsigned int h = hash(name);
+    Symbol* curr = symtab.buckets[h];
+    while (curr) {
+        if (strcmp(curr->name, name) == 0) {
+            return curr->offset;
         }
+        curr = curr->next;
     }
     printf("SYMBOL TABLE: Variable '%s' not found\n", name);
-    return -1;  /* Variable not found - semantic error */
+    return -1;
 }
 
-/* Check if a variable has been declared */
 int isVarDeclared(char* name) {
-    return getVarOffset(name) != -1;  /* True if found, false otherwise */
+    return getVarOffset(name) != -1;
 }
 
-/* Print current symbol table contents for debugging/tracing */
+/* djb2 hash */
+unsigned int hash(char* str) {
+    unsigned int hash = 5381;
+    int c;
+    while ((c = *str++))
+        hash = ((hash << 5) + hash) + c;
+    return hash % HASH_SIZE;
+}
+
+/* Print current symbol table contents */
 void printSymTab() {
     printf("\n=== SYMBOL TABLE STATE ===\n");
     printf("Count: %d, Next Offset: %d\n", symtab.count, symtab.nextOffset);
-    if (symtab.count == 0) {
-        printf("(empty)\n");
-    } else {
-        printf("Variables:\n");
-        for (int i = 0; i < symtab.count; i++) {
-    if (symtab.vars[i].isArray) {
-        printf("  [%d] %s[%d] -> offset %d\n", i, symtab.vars[i].name, symtab.vars[i].arraySize, symtab.vars[i].offset);
-    } else {
-        printf("  [%d] %s -> offset %d\n", i, symtab.vars[i].name, symtab.vars[i].offset);
-    }
-}
+
+    for (int i = 0; i < HASH_SIZE; i++) {
+        Symbol* curr = symtab.buckets[i];
+        if (curr) {
+            printf("Bucket[%d]:\n", i);
+            while (curr) {
+                if (curr->isArray) {
+                    printf("  %s[%d] -> offset %d\n",
+                           curr->name, curr->arraySize, curr->offset);
+                } else {
+                    printf("  %s -> offset %d\n", curr->name, curr->offset);
+                }
+                curr = curr->next;
+            }
+        }
     }
     printf("==========================\n\n");
 }

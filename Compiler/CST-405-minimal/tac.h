@@ -3,54 +3,67 @@
 
 #include "ast.h"
 
-/* THREE-ADDRESS CODE (TAC)
- * Intermediate representation between AST and machine code
- * Each instruction has at most 3 operands (result = arg1 op arg2)
- * Makes optimization and code generation easier
- */
+/* THREE-ADDRESS CODE (TAC) */
+
+/* Optimization statistics */
+typedef struct {
+    int eliminated_temps;
+    int constant_folded;
+    int dead_code_removed;
+} OptimizationStats;
+
+/* Declare global stats (defined in tac.c) */
+extern OptimizationStats opt_stats;
 
 /* TAC INSTRUCTION TYPES */
 typedef enum {
-    TAC_ADD,     /* Addition: result = arg1 + arg2 */
-    TAC_SUB,     /* Subtraction: result = arg1 - arg2 */
-    TAC_MUL,     /* Multiplication: result = arg1 * arg2 */
-    TAC_DIV,     /* Division: result = arg1 / arg2 */
-    TAC_MOD,     /* Modulus: result = arg1 % arg2 */
-    TAC_ASSIGN,  /* Assignment: result = arg1 */
-    TAC_PRINT,   /* Print: print(arg1) */
-    TAC_DECL,     /* Declaration: declare result */
-    TAC_ARRAY_DECL,    /* Array declaration: declare array[size] */
-    TAC_ARRAY_ASSIGN,  /* Array assignment: array[index] = value */
-    TAC_ARRAY_ACCESS   /* Array access: temp = array[index] */
+    TAC_ADD,     
+    TAC_SUB,     
+    TAC_MUL,     
+    TAC_DIV,     
+    TAC_MOD,     
+    TAC_ASSIGN,  
+    TAC_PRINT,   
+    TAC_DECL,     
+    TAC_ARRAY_DECL,    
+    TAC_ARRAY_ASSIGN,  
+    TAC_ARRAY_ACCESS,
+    TAC_NOP
 } TACOp;
 
 /* TAC INSTRUCTION STRUCTURE */
 typedef struct TACInstr {
-    TACOp op;               /* Operation type */
-    char* arg1;             /* First operand (if needed) */
-    char* arg2;             /* Second operand (for binary ops) */
-    char* result;           /* Result/destination */
-    struct TACInstr* next;  /* Linked list pointer */
+    TACOp op;
+    char* arg1;
+    char* arg2;
+    char* result;
+    struct TACInstr* next;
 } TACInstr;
 
 /* TAC LIST MANAGEMENT */
 typedef struct {
-    TACInstr* head;    /* First instruction */
-    TACInstr* tail;    /* Last instruction (for efficient append) */
-    int tempCount;     /* Counter for temporary variables (t0, t1, ...) */
+    TACInstr* head;
+    TACInstr* tail;
+    int tempCount;
 } TACList;
 
-/* TAC GENERATION FUNCTIONS */
-void initTAC();                                                    /* Initialize TAC lists */
-char* newTemp();                                                   /* Generate new temp variable */
-TACInstr* createTAC(TACOp op, char* arg1, char* arg2, char* result); /* Create TAC instruction */
-void appendTAC(TACInstr* instr);                                  /* Add instruction to list */
-void generateTAC(ASTNode* node);                                  /* Convert AST to TAC */
-char* generateTACExpr(ASTNode* node);                             /* Generate TAC for expression */
+/* Global TAC lists (defined in tac.c) */
+extern TACList tacList;
+extern TACList optimizedList;
 
-/* TAC OPTIMIZATION AND OUTPUT */
-void printTAC();                                                   /* Display unoptimized TAC */
-void optimizeTAC();                                                /* Apply optimizations */
-void printOptimizedTAC();                                          /* Display optimized TAC */
+/* Function declarations */
+void initTAC();
+char* newTemp();
+TACInstr* createTAC(TACOp op, char* arg1, char* arg2, char* result);
+void appendTAC(TACInstr* instr);
+void generateTAC(ASTNode* node);
+char* generateTACExpr(ASTNode* node);
+
+void printTAC();
+void optimizeTAC();
+void printOptimizedTAC();
+void removeNOPs();
+int isConstant(const char* s);
+
 
 #endif

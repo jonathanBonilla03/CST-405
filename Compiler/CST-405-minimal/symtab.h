@@ -7,22 +7,29 @@
  * Used for semantic checking and code generation
  */
 
-#define MAX_VARS 100  /* Maximum number of variables supported */
+#define MAX_VARS 1000  /* Maximum number of variables supported */
+#define HASH_SIZE 211 /* Size of hash table for variable lookup */
 
-/* SYMBOL ENTRY - Information about each variable */
-typedef struct {
-    char* name;     /* Variable identifier */
-    int offset;     /* Stack offset in bytes (for MIPS stack frame) */
-    int isArray;   /* 1 if variable is an array, 0 otherwise */
-    int arraySize; /* Size of the array (0 for regular variables) */
+typedef struct Symbol {
+    char* name;
+    int type;
+    int offset;
+    int isArray;
+    int arraySize;
+    struct Symbol* next;  // linked list in each bucket
 } Symbol;
 
 /* SYMBOL TABLE STRUCTURE */
 typedef struct {
-    Symbol vars[MAX_VARS];  /* Array of all variables */
+    Symbol* buckets[HASH_SIZE]; /* Hash table for quick lookup */
     int count;              /* Number of variables declared */
     int nextOffset;         /* Next available stack offset */
+    int lookups;
+    int collisions;
 } SymbolTable;
+
+/* Global symbol table instance */
+extern SymbolTable symtab;
 
 /* SYMBOL TABLE OPERATIONS */
 void initSymTab();               /* Initialize empty symbol table */
@@ -33,5 +40,6 @@ int getArraySize(char* name); /* Get size of array variable, -1 if not an array 
 int getVarOffset(char* name);    /* Get stack offset for variable, -1 if not found */
 int isVarDeclared(char* name);   /* Check if variable exists (1=yes, 0=no) */
 void printSymTab();              /* Print current symbol table contents */
+unsigned int hash(char* str); /* Hash function for variable names */
 
 #endif

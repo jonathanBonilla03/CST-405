@@ -1,12 +1,76 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include "codegen.h"
 #include "symtab.h"
+#include <string.h>
 
 FILE* output;
 int tempReg = 0;
+RegisterAllocator reg_alloc;
 
-/* codegen.c — corrected genExpr/genStmt (minimal, safe changes) */
+void init_register_allocator() {
+    for(int i = 0; i < 8; i++) {
+        char name[4];
+        sprintf(name, "$t%d", i);
+        reg_alloc.temp_regs[i].reg_name = strdup(name);
+        reg_alloc.temp_regs[i].is_free = 1;
+        reg_alloc.temp_regs[i].var_name = NULL;
+        reg_alloc.temp_regs[i].last_used = 0;
+    }
+    reg_alloc.clock = 0;
+}
+
+char* allocate_register(char* var) {
+    // First check if variable already in register
+    for(int i = 0; i < 8; i++) {
+        if(reg_alloc.temp_regs[i].var_name &&
+           strcmp(reg_alloc.temp_regs[i].var_name, var) == 0) {
+            reg_alloc.temp_regs[i].last_used = reg_alloc.clock++;
+            return reg_alloc.temp_regs[i].reg_name;
+        }
+    }
+
+    // Find free register
+    for(int i = 0; i < 8; i++) {
+        if(reg_alloc.temp_regs[i].is_free) {
+            reg_alloc.temp_regs[i].is_free = 0;
+            reg_alloc.temp_regs[i].var_name = strdup(var);
+            reg_alloc.temp_regs[i].last_used = reg_alloc.clock++;
+            return reg_alloc.temp_regs[i].reg_name;
+        }
+    }
+
+    // Need to evict - find LRU
+    int lru_idx = 0;
+    int min_time = reg_alloc.temp_regs[0].last_used;
+    for(int i = 1; i < 8; i++) {
+        if(reg_alloc.temp_regs[i].last_used < min_time) {
+            min_time = reg_alloc.temp_regs[i].last_used;
+            lru_idx = i;
+        }
+    }
+
+    // Spill old variable to stack
+    if(reg_alloc.temp_regs[lru_idx].var_name) {
+        int offset = getVarOffset(reg_alloc.temp_regs[lru_idx].var_name);
+        fprintf(output, "    sw %s, %d($fp)\n",
+                reg_alloc.temp_regs[lru_idx].reg_name, offset);
+    }
+
+    // Allocate to new variable
+    reg_alloc.temp_regs[lru_idx].var_name = strdup(var);
+    reg_alloc.temp_regs[lru_idx].last_used = reg_alloc.clock++;
+
+    // Load from stack if needed
+    if(isVarDeclared(var)) {
+        int offset = getVarOffset(var);
+        fprintf(output, "    lw %s, %d($fp)\n",
+                reg_alloc.temp_regs[lru_idx].reg_name, offset);
+    }
+
+    return reg_alloc.temp_regs[lru_idx].reg_name;
+}
 
 int getNextTemp() {
     int reg = tempReg++;

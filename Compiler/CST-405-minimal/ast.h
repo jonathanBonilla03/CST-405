@@ -7,6 +7,27 @@
  * Each node represents a construct in the language
  */
 
+#define POOL_SIZE 4096
+#define MAX_POOLS 100
+
+typedef struct MemPool {
+    char* memory;
+    size_t used;
+    size_t size;
+    struct MemPool* next;
+} MemPool;
+
+typedef struct {
+    MemPool* current;
+    MemPool* head;
+    int total_allocations;
+    int pool_count;
+    size_t total_memory;
+} ASTMemoryManager;
+
+void init_ast_memory();
+void* ast_alloc(size_t size);
+
 /* NODE TYPES - Different kinds of AST nodes in our language */
 typedef enum {
     NODE_NUM,       /* Numeric literal (e.g., 42) */

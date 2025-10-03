@@ -7,6 +7,8 @@
 #include "ast.h"
 #include "codegen.h"
 #include "tac.h"
+#include "benchmark.c"
+#include "symtab.h"
 
 extern int yyparse();
 extern FILE* yyin;
@@ -106,4 +108,26 @@ int main(int argc, char* argv[]) {
     
     fclose(yyin);
     return 0;
+}
+
+void test_symbol_table_performance() {
+    BenchmarkResult* bench = start_benchmark();
+
+    // Test with 1000 variables
+    for(int i = 0; i < 1000; i++) {
+        char varname[20];
+        sprintf(varname, "var_%d", i);
+        addVar(varname);
+    }
+
+    // Test lookups
+    for(int i = 0; i < 10000; i++) {
+        char varname[20];
+        sprintf(varname, "var_%d", rand() % 1000);
+        getVarOffset(varname);
+    }
+
+    end_benchmark(bench, "Symbol Table");
+    printf("Collisions: %d\n", symtab.collisions);
+    free(bench);
 }
