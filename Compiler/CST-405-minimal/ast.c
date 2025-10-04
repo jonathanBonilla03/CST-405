@@ -143,6 +143,15 @@ ASTNode* createArrayAccess(char* name, ASTNode* index) {
     return node;
 }
 
+ASTNode* createUnaryOp(char op, ASTNode* expr) {
+    ASTNode* node = malloc(sizeof(ASTNode));
+    node->type = NODE_UNOP;
+    node->data.unop.op = op;
+    node->data.unop.expr = expr;
+    return node;
+}
+
+
 /* Display the AST structure (for debugging and education) */
 void printAST(ASTNode* node, int level) {
     if (!node) return;

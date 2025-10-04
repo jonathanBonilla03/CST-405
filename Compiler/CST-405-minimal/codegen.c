@@ -9,6 +9,7 @@ FILE* output;
 int tempReg = 0;
 RegisterAllocator reg_alloc;
 
+/* Register allocator init */
 void init_register_allocator() {
     for(int i = 0; i < 8; i++) {
         char name[4];
@@ -41,7 +42,7 @@ char* allocate_register(char* var) {
         }
     }
 
-    // Need to evict - find LRU
+    // Evict LRU
     int lru_idx = 0;
     int min_time = reg_alloc.temp_regs[0].last_used;
     for(int i = 1; i < 8; i++) {
@@ -74,10 +75,11 @@ char* allocate_register(char* var) {
 
 int getNextTemp() {
     int reg = tempReg++;
-    if (tempReg > 7) tempReg = 0;  // Reuse $t0-$t7
+    if (tempReg > 7) tempReg = 0;  // reuse $t0-$t7
     return reg;
 }
 
+/* Generate code for expressions */
 int genExpr(ASTNode* node) {
     if (!node) return -1;
 
@@ -106,7 +108,6 @@ int genExpr(ASTNode* node) {
         }
 
         case NODE_BINOP: {
-            /* evaluate left and right, returning registers */
             int leftReg  = genExpr(node->data.binop.left);
             int rightReg = genExpr(node->data.binop.right);
             if (leftReg < 0 || rightReg < 0) {
@@ -125,7 +126,6 @@ int genExpr(ASTNode* node) {
                     fprintf(output, "    mul $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg);
                     break;
                 case '/':
-                    /* integer division */
                     fprintf(output, "    div $t%d, $t%d\n", leftReg, rightReg);
                     fprintf(output, "    mflo $t%d\n", destReg);
                     break;
@@ -136,12 +136,24 @@ int genExpr(ASTNode* node) {
             return destReg;
         }
 
+        case NODE_UNOP: {
+            int exprReg = genExpr(node->data.unop.expr);
+            if (exprReg < 0) {
+                fprintf(stderr, "Error: failed to generate unary op expression\n");
+                exit(1);
+            }
+            int destReg = getNextTemp();
+            if (node->data.unop.op == '-') {
+                fprintf(output, "    sub $t%d, $zero, $t%d   # negate\n", destReg, exprReg);
+            }
+            return destReg;
+        }
+
         case NODE_ARRAY_ACCESS: {
             if (!isArrayVar(node->data.array_access.name)) {
                 fprintf(stderr, "Error: %s is not an array\n", node->data.array_access.name);
                 exit(1);
             }
-            /* index -> offset, compute element address, load */
             int idxReg = genExpr(node->data.array_access.index);
             if (idxReg < 0) {
                 fprintf(stderr, "Error: failed to generate index expression\n");
@@ -149,12 +161,11 @@ int genExpr(ASTNode* node) {
             }
 
             int baseOffset = getVarOffset(node->data.array_access.name);
-            int offsetReg = getNextTemp();   /* offset = index * 4 */
-            int addrReg   = getNextTemp();   /* element address */
+            int offsetReg = getNextTemp();
+            int addrReg   = getNextTemp();
 
             fprintf(output, "    sll $t%d, $t%d, 2    # index * 4\n", offsetReg, idxReg);
             fprintf(output, "    add $t%d, $sp, $t%d # base + offset\n", addrReg, offsetReg);
-            /* apply baseOffset (stack offset where array starts) */
             if (baseOffset != 0) {
                 fprintf(output, "    addi $t%d, $t%d, %d  # apply baseOffset\n", addrReg, addrReg, baseOffset);
             }
@@ -166,11 +177,10 @@ int genExpr(ASTNode* node) {
             fprintf(stderr, "Error: Unsupported expression node type %d\n", node->type);
             exit(1);
     }
-    /* unreachable, but satisfy compiler */
     return -1;
 }
 
-
+/* Generate code for statements */
 void genStmt(ASTNode* node) {
     if (!node) return;
 
@@ -190,7 +200,7 @@ void genStmt(ASTNode* node) {
             if (valueReg < 0) { fprintf(stderr, "Error: failed to generate RHS of assignment\n"); exit(1); }
 
             fprintf(output, "    sw $t%d, %d($sp)\n", valueReg, offset);
-            tempReg = 0;  /* reset temp reg allocation after each stmt */
+            tempReg = 0;
             break;
         }
 
@@ -209,7 +219,7 @@ void genStmt(ASTNode* node) {
             if (idxReg < 0 || valReg < 0) { fprintf(stderr, "Error: failed to generate array assignment parts\n"); exit(1); }
 
             int baseOffset = getVarOffset(node->data.array_assign.name);
-            int offsetReg = getNextTemp(); /* index*4 */
+            int offsetReg = getNextTemp();
             int addrReg   = getNextTemp();
 
             fprintf(output, "    sll $t%d, $t%d, 2    # index * 4\n", offsetReg, idxReg);
@@ -219,7 +229,7 @@ void genStmt(ASTNode* node) {
             }
             fprintf(output, "    sw $t%d, 0($t%d)     # store value\n", valReg, addrReg);
 
-            tempReg = 0;  /* reset temp reg allocation after each stmt */
+            tempReg = 0;
             break;
         }
 
@@ -230,12 +240,11 @@ void genStmt(ASTNode* node) {
             fprintf(output, "    move $a0, $t%d\n", exprReg);
             fprintf(output, "    li $v0, 1\n");
             fprintf(output, "    syscall\n");
-            /* newline */
             fprintf(output, "    li $v0, 11\n");
             fprintf(output, "    li $a0, 10\n");
             fprintf(output, "    syscall\n");
 
-            tempReg = 0;  /* reset temp reg allocation after each stmt */
+            tempReg = 0;
             break;
         }
 
@@ -249,7 +258,7 @@ void genStmt(ASTNode* node) {
     }
 }
 
-
+/* Generate full program */
 void generateMIPS(ASTNode* root, const char* filename) {
     output = fopen(filename, "w");
     if (!output) {
@@ -257,23 +266,18 @@ void generateMIPS(ASTNode* root, const char* filename) {
         exit(1);
     }
     
-    // Initialize symbol table
     initSymTab();
     
-    // MIPS program header
     fprintf(output, ".data\n");
     fprintf(output, "\n.text\n");
     fprintf(output, ".globl main\n");
     fprintf(output, "main:\n");
     
-    // Allocate stack space (max 100 variables * 4 bytes)
     fprintf(output, "    # Allocate stack space\n");
     fprintf(output, "    addi $sp, $sp, -400\n\n");
     
-    // Generate code for statements
     genStmt(root);
     
-    // Program exit
     fprintf(output, "\n    # Exit program\n");
     fprintf(output, "    addi $sp, $sp, 400\n");
     fprintf(output, "    li $v0, 10\n");

@@ -173,10 +173,20 @@ char* generateTACExpr(ASTNode* node) {
             appendTAC(createTAC(TAC_ARRAY_ACCESS, indexExpr, NULL, temp));
             return temp;
         }
-        
+        case NODE_UNOP: {
+        char* expr = generateTACExpr(node->data.unop.expr);
+        char* temp = newTemp();
+        if (node->data.unop.op == '-') {
+            appendTAC(createTAC(TAC_NEG, expr, NULL, temp));
+        }
+    return temp;
+}
+
         default:
             return NULL;
+            
     }
+    
 }
 
 void generateTAC(ASTNode* node) {

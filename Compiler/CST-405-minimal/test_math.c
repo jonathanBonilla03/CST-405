@@ -1,8 +1,15 @@
 int x;
-float y;
-float z;
+int y;
+int z;
 
-x = 4;
-y = 4.0;
-z = x / y;
-print(z);
+x = -5;
+print(x);          // expect -5
+
+y = 10 + -3;
+print(y);          // expect 7
+
+z = -(y + 2);
+print(z);          // expect -9
+
+x = z - -4;
+print(x);          // expect -5

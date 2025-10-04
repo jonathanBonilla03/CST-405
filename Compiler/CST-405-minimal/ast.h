@@ -1,11 +1,9 @@
 #ifndef AST_H
 #define AST_H
 
-/* ABSTRACT SYNTAX TREE (AST)
- * The AST is an intermediate representation of the program structure
- * It represents the hierarchical syntax of the source code
- * Each node represents a construct in the language
- */
+/* ABSTRACT SYNTAX TREE (AST) */
+
+#include <stddef.h>
 
 #define POOL_SIZE 4096
 #define MAX_POOLS 100
@@ -28,95 +26,98 @@ typedef struct {
 void init_ast_memory();
 void* ast_alloc(size_t size);
 
-/* NODE TYPES - Different kinds of AST nodes in our language */
+/* NODE TYPES */
 typedef enum {
-    NODE_NUM,       /* Numeric literal (e.g., 42) */
-    NODE_FLOAT,    /* Float literal (e.g., 3.14) */
-    NODE_VAR,       /* Variable reference (e.g., x) */
-    NODE_BINOP,     /* Binary operation (e.g., x + y) */
-    NODE_DECL,      /* Variable declaration (e.g., int x) */
-    NODE_ASSIGN,    /* Assignment statement (e.g., x = 10) */
-    NODE_PRINT,     /* Print statement (e.g., print(x)) */
-    NODE_STMT_LIST, /* List of statements (program structure) */
-    NODE_ARRAY_DECL, /* Array declaration (e.g., int arr[10]) */
-    NODE_ARRAY_ASSIGN, /* Array assignment (e.g., arr[0] = 5) */
-    NODE_ARRAY_ACCESS  /* Array access (e.g., arr[0]) */
+    NODE_NUM,            /* integer literal */
+    NODE_FLOAT,          /* float literal */
+    NODE_VAR,            /* identifier use */
+    NODE_BINOP,          /* binary operator (+,-,*,/,% ...) */
+    NODE_UNOP,           /* unary operator (e.g., '-') */
+    NODE_DECL,           /* int x; / float y; */
+    NODE_ASSIGN,         /* x = expr; */
+    NODE_PRINT,          /* print(expr); */
+    NODE_STMT_LIST,      /* sequence of statements */
+    NODE_ARRAY_DECL,     /* int a[N]; */
+    NODE_ARRAY_ASSIGN,   /* a[i] = expr; */
+    NODE_ARRAY_ACCESS    /* a[i] */
 } NodeType;
 
-/* AST NODE STRUCTURE
- * Uses a union to efficiently store different node data
- * Only the relevant fields for each node type are used
- */
+/* AST NODE */
 typedef struct ASTNode {
-    NodeType type;  /* Identifies what kind of node this is */
-    
-    /* Union allows same memory to store different data types */
+    NodeType type;
     union {
-        /* Literal number value (NODE_NUM) */
-        int num;
-        /* Literal float value (NODE_FLOAT) */
-        float decimal;
+        /* literals */
+        int   num;        /* NODE_NUM */
+        float decimal;    /* NODE_FLOAT */
 
-        /* Variable or declaration name (NODE_VAR, NODE_DECL) */
-        char* name;
-        
-        /* Binary operation structure (NODE_BINOP) */
+        /* names (var or decl) */
+        char* name;       /* NODE_VAR, NODE_DECL */
+
+        /* binary op */
         struct {
-            char op;                    /* Operator character ('+') */
-            struct ASTNode* left;       /* Left operand */
-            struct ASTNode* right;      /* Right operand */
+            char op;
+            struct ASTNode* left;
+            struct ASTNode* right;
         } binop;
-        
-        /* Assignment structure (NODE_ASSIGN) */
+
+        /* unary op */
         struct {
-            char* var;                  /* Variable being assigned to */
-            struct ASTNode* value;      /* Expression being assigned */
+            char op;
+            struct ASTNode* expr;
+        } unop;
+
+        /* assignment */
+        struct {
+            char* var;               /* variable name (target) */
+            struct ASTNode* value;   /* rhs expression */
         } assign;
-        
-        /* Print expression (NODE_PRINT) */
-        struct ASTNode* expr;
-        
-        /* Statement list structure (NODE_STMT_LIST) */
+
+        /* print */
+        struct ASTNode* expr;        /* expression to print */
+
+        /* statement list */
         struct {
-            struct ASTNode* stmt;       /* Current statement */
-            struct ASTNode* next;       /* Rest of the list */
+            struct ASTNode* stmt;
+            struct ASTNode* next;
         } stmtlist;
 
+        /* array decl */
         struct {
-            char* name;                 /* Array name */
-            int size;                   /* Size of the array */
+            char* name;
+            int   size;
         } array_decl;
 
+        /* array assign */
         struct {
-            char* name;                 /* Array name */
-            struct ASTNode* index;      /* Index expression */
-            struct ASTNode* value;      /* Value to assign */
+            char* name;
+            struct ASTNode* index;
+            struct ASTNode* value;
         } array_assign;
 
+        /* array access */
         struct {
-            char* name;                 /* Array name */
-            struct ASTNode* index;      /* Index expression */
+            char* name;
+            struct ASTNode* index;
         } array_access;
 
     } data;
 } ASTNode;
 
-/* AST CONSTRUCTION FUNCTIONS
- * These functions are called by the parser to build the tree
- */
-ASTNode* createNum(int value);                                   /* Create number node */
-ASTNode* createFloat(float value);                               /* Create float node */
-ASTNode* createVar(char* name);                                  /* Create variable node */
-ASTNode* createBinOp(char op, ASTNode* left, ASTNode* right);   /* Create binary op node */
-ASTNode* createDecl(char* name);                                 /* Create declaration node */
-ASTNode* createAssign(char* var, ASTNode* value);               /* Create assignment node */
-ASTNode* createPrint(ASTNode* expr);                            /* Create print node */
-ASTNode* createStmtList(ASTNode* stmt1, ASTNode* stmt2);        /* Create statement list */
-ASTNode* createArrayDecl(char* name, int size);                 /* Create array declaration node */
-ASTNode* createArrayAssign(char* name, ASTNode* index, ASTNode* value); /* Create array assignment node */
-ASTNode* createArrayAccess(char* name, ASTNode* index);          /* Create array access node */
+/* CONSTRUCTORS */
+ASTNode* createNum(int value);
+ASTNode* createFloat(float value);
+ASTNode* createVar(char* name);
+ASTNode* createBinOp(char op, ASTNode* left, ASTNode* right);
+ASTNode* createUnaryOp(char op, ASTNode* expr);                 /* <-- added for unary minus */
+ASTNode* createDecl(char* name);
+ASTNode* createAssign(char* var, ASTNode* value);
+ASTNode* createPrint(ASTNode* expr);
+ASTNode* createStmtList(ASTNode* stmt1, ASTNode* stmt2);
+ASTNode* createArrayDecl(char* name, int size);
+ASTNode* createArrayAssign(char* name, ASTNode* index, ASTNode* value);
+ASTNode* createArrayAccess(char* name, ASTNode* index);
 
-/* AST DISPLAY FUNCTION */
-void printAST(ASTNode* node, int level);                        /* Pretty-print the AST */
+/* DEBUG / DISPLAY */
+void printAST(ASTNode* node, int level);
 
 #endif

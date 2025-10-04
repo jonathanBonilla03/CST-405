@@ -18,146 +18,118 @@ void yyerror(const char* s);  /* Error handling function */
 ASTNode* root = NULL;          /* Root of the Abstract Syntax Tree */
 %}
 
-/* SEMANTIC VALUES UNION
- * Defines possible types for tokens and grammar symbols
- * This allows different grammar rules to return different data types
- */
+/* SEMANTIC VALUES UNION */
 %union {
-    int num;                /* For integer literals */
-    float floats;          /* For float literals */
-    char* str;              /* For identifiers */
-    struct ASTNode* node;   /* For AST nodes */
+    int num;                 /* For integer literals */
+    float floats;            /* For float literals */
+    char* str;               /* For identifiers */
+    struct ASTNode* node;    /* For AST nodes */
 }
 
-/* TOKEN DECLARATIONS with their semantic value types */
-%token <num> NUM        /* Number token carries an integer value */
-%token <floats> FLOAT      /* Float token carries a float value */
-%token <str> ID         /* Identifier token carries a string */
-%token INT PRINT        /* Keywords have no semantic value */
+/* TOKENS */
+%token <num>   NUM
+%token <floats> FLOAT
+%token <str>   ID
+%token         INT PRINT
 
-/* NON-TERMINAL TYPES - Define what type each grammar rule returns */
+/* NON-TERMINAL TYPES */
 %type <node> program stmt_list stmt decl assign expr print_stmt
 
-/* OPERATOR PRECEDENCE AND ASSOCIATIVITY */
-%right '=' /* Assignment is right-associative: a=b=c means a=(b=c) */
-%left '+' '-'  /* Addition and subtraction are left-associative: a+b-c = (a+b)-c */
-%left '*' '/' /* Multiplication and division are left-associative: a*b/c = (a*b)/c */
+/* PRECEDENCE & ASSOCIATIVITY */
+%right '='
+%left '+' '-'
+%left '*' '/'
+%left '%'
+%right UMINUS     /* unary minus has higher precedence than +,-,*./,% */
 
 %%
 
-/* GRAMMAR RULES - Define the structure of our language */
-
-/* PROGRAM RULE - Entry point of our grammar */
+/* PROGRAM */
 program:
-    stmt_list { 
-        /* Action: Save the statement list as our AST root */
-        root = $1;  /* $1 refers to the first symbol (stmt_list) */
+    stmt_list
+    {
+        root = $1;
     }
     ;
 
-/* STATEMENT LIST - Handles multiple statements */
+/* STATEMENT LIST */
 stmt_list:
-    stmt { 
-        /* Base case: single statement */
-        $$ = $1;  /* Pass the statement up as-is */
-    }
-    | stmt_list stmt { 
-        /* Recursive case: list followed by another statement */
-        $$ = createStmtList($1, $2);  /* Build linked list of statements */
-    }
+      stmt
+    | stmt_list stmt { $$ = createStmtList($1, $2); }
     ;
 
-/* STATEMENT TYPES - The three kinds of statements we support */
+/* STATEMENT */
 stmt:
-    decl        /* Variable declaration */
-    | assign    /* Assignment statement */
-    | print_stmt /* Print statement */
+      decl
+    | assign
+    | print_stmt
     ;
 
-/* DECLARATION RULE - "int x;" */
+/* DECLARATIONS */
 decl:
-    INT ID ';' { 
-        /* Create declaration node and free the identifier string */
-        $$ = createDecl($2);  /* $2 is the ID token's string value */
-        free($2);             /* Free the string copy from scanner */
+      INT ID ';'
+    {
+        $$ = createDecl($2);
+        free($2);
     }
-    | INT ID '[' NUM ']' ';' { 
-        /* Array declaration */
-        $$ = createArrayDecl($2, $4);  /* $2 = ID, $4 = array size */
-        free($2);                       /* Free the identifier string */
+    | INT ID '[' NUM ']' ';'
+    {
+        $$ = createArrayDecl($2, $4);
+        free($2);
     }
-    | FLOAT ID ';' { 
-        /* Create declaration node and free the identifier string */
-        $$ = createDecl($2);  /* $2 is the ID token's string value */
-        free($2);             /* Free the string copy from scanner */
+    | FLOAT ID ';'
+    {
+        $$ = createDecl($2);
+        free($2);
     }
     ;
 
-/* ASSIGNMENT RULE - "x = expr;" */
+/* ASSIGNMENTS */
 assign:
-    ID '=' expr ';' { 
-        /* Create assignment node with variable name and expression */
-        $$ = createAssign($1, $3);  /* $1 = ID, $3 = expr */
-        free($1);                   /* Free the identifier string */
+      ID '=' expr ';'
+    {
+        $$ = createAssign($1, $3);
+        free($1);
     }
-    | ID '[' expr ']' '=' expr ';' {
+    | ID '[' expr ']' '=' expr ';'
+    {
         $$ = createArrayAssign($1, $3, $6);
         free($1);
     }
     ;
 
-/* EXPRESSION RULES - Build expression trees */
+/* EXPRESSIONS */
 expr:
-    NUM { 
-        /* Literal number */
-        $$ = createNum($1);  /* Create leaf node with number value */
-    }
-    | FLOAT {
-        /* Literal float */
-        $$ = createFloat($1);  /* Create leaf node with float value */
-    }
-    | ID { 
-        /* Variable reference */
-        $$ = createVar($1);  /* Create leaf node with variable name */
-        free($1);            /* Free the identifier string */
-    }
-    | ID '[' expr ']' {
-        $$ = createArrayAccess($1, $3);
-        free($1);
-    }
-    | expr '+' expr { 
-        /* Addition operation - builds binary tree */
-        $$ = createBinOp('+', $1, $3);  /* Left child, op, right child */
-    }
-    | expr '-' expr { 
-        /* Subtraction operation - builds binary tree */
-        $$ = createBinOp('-', $1, $3);  /* Left child, op, right child */
-    }
-    | expr '*' expr {
-        /* Multiplication operation - builds binary tree */
-        $$ = createBinOp('*', $1, $3);  /* Left child, op, right child */
-    }
-    | expr '/' expr {
-        /* Division operation - builds binary tree */
-        $$ = createBinOp('/', $1, $3);  /* Left child, op, right child */
-    }
-    | expr '%' expr {
-        /* Modulus operation - builds binary tree */
-        $$ = createBinOp('%', $1, $3);  /* Left child, op, right child */
-    }
+      NUM                { $$ = createNum($1); }
+    | FLOAT              { $$ = createFloat($1); }
+    | ID                 { $$ = createVar($1); free($1); }
+    | ID '[' expr ']'    { $$ = createArrayAccess($1, $3); free($1); }
+
+    /* binary ops */
+    | expr '+' expr      { $$ = createBinOp('+', $1, $3); }
+    | expr '-' expr      { $$ = createBinOp('-', $1, $3); }
+    | expr '*' expr      { $$ = createBinOp('*', $1, $3); }
+    | expr '/' expr      { $$ = createBinOp('/', $1, $3); }
+    | expr '%' expr      { $$ = createBinOp('%', $1, $3); }
+
+    /* unary minus (negative numbers / negation) */
+    | '-' expr %prec UMINUS { $$ = createUnaryOp('-', $2); }
+
+    /* parentheses for grouping, e.g., -(x + 3) */
+    | '(' expr ')'       { $$ = $2; }
     ;
 
-/* PRINT STATEMENT - "print(expr);" */
+/* PRINT */
 print_stmt:
-    PRINT '(' expr ')' ';' { 
-        /* Create print node with expression to print */
-        $$ = createPrint($3);  /* $3 is the expression inside parens */
+    PRINT '(' expr ')' ';'
+    {
+        $$ = createPrint($3);
     }
     ;
 
 %%
 
-/* ERROR HANDLING - Called by Bison when syntax error detected */
+/* ERROR HANDLING */
 void yyerror(const char* s) {
     fprintf(stderr, "Syntax Error: %s\n", s);
 }

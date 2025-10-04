@@ -28,7 +28,8 @@ typedef enum {
     TAC_ARRAY_DECL,    
     TAC_ARRAY_ASSIGN,  
     TAC_ARRAY_ACCESS,
-    TAC_NOP
+    TAC_NOP,
+    TAC_NEG
 } TACOp;
 
 /* TAC INSTRUCTION STRUCTURE */
