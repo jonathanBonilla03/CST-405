@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <sys/time.h>
-#include <sys/resource.h>
+//#include <sys/resource.h>
 #include <string.h>
 
 #ifdef __APPLE__
