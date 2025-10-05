@@ -103,6 +103,18 @@ int genExpr(ASTNode* node) {
             return reg;
         }
 
+        case NODE_FLOAT: {
+            int reg = getNextTemp();
+            fprintf(output, "    li.s $f%d, %f\n", reg, node->data.decimal);
+            return reg;
+        }
+        
+        case NODE_BOOL: {
+            int reg = getNextTemp();
+            fprintf(output, "    li $t%d, %d\n", reg, node->data.boolean ? 1 : 0);
+            return reg;
+        }
+
         case NODE_VAR: {
             int offset = getVarOffset(node->data.name);
             if (offset == -1) {
@@ -117,17 +129,34 @@ int genExpr(ASTNode* node) {
         case NODE_BINOP: {
             int leftReg  = genExpr(node->data.binop.left);
             int rightReg = genExpr(node->data.binop.right);
-            int destReg = getNextTemp();
+            int destReg  = getNextTemp();
+
             switch (node->data.binop.op) {
-                case '+': fprintf(output, "    add $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg); break;
-                case '-': fprintf(output, "    sub $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg); break;
-                case '*': fprintf(output, "    mul $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg); break;
-                case '/':
+                case BINOP_ADD:
+                    fprintf(output, "    add $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg);
+                    break;
+                case BINOP_SUB:
+                    fprintf(output, "    sub $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg);
+                    break;
+                case BINOP_MUL:
+                    fprintf(output, "    mul $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg);
+                    break;
+                case BINOP_DIV:
                     fprintf(output, "    div $t%d, $t%d\n", leftReg, rightReg);
                     fprintf(output, "    mflo $t%d\n", destReg);
                     break;
+                case BINOP_MOD:
+                    fprintf(output, "    div $t%d, $t%d\n", leftReg, rightReg);
+                    fprintf(output, "    mfhi $t%d\n", destReg);
+                    break;
+                case BINOP_AND:
+                    fprintf(output, "    and $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg);
+                    break;
+                case BINOP_OR:
+                    fprintf(output, "    or  $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg);
+                    break;
                 default:
-                    fprintf(stderr, "Unknown binary operator %c\n", node->data.binop.op);
+                    fprintf(stderr, "Error: Unknown binary operator kind %d\n", node->data.binop.op);
                     exit(1);
             }
             return destReg;
@@ -136,8 +165,17 @@ int genExpr(ASTNode* node) {
         case NODE_UNOP: {
             int exprReg = genExpr(node->data.unop.expr);
             int destReg = getNextTemp();
-            if (node->data.unop.op == '-')
-                fprintf(output, "    sub $t%d, $zero, $t%d\n", destReg, exprReg);
+
+            switch (node->data.unop.op) {
+                case UNOP_NEG:
+                    fprintf(output, "    sub $t%d, $zero, $t%d\n", destReg, exprReg);
+                    break;
+                case UNOP_NOT:
+                    // Logical NOT: result = (expr == 0) ? 1 : 0
+                    fprintf(output, "    sltiu $t%d, $t%d, 1\n", destReg, exprReg);
+                    break;
+            }
+
             return destReg;
         }
 
@@ -207,18 +245,28 @@ void genStmt(ASTNode* node) {
 
         case NODE_IF: {
             char* elseLbl = newLabel("L_else");
-            char* endLbl = newLabel("L_end");
+            char* endLbl  = newLabel("L_end");
+
+            // Evaluate the condition
             int condReg = genExpr(node->data.ifstmt.cond);
 
+            // If condition is false (== 0), jump to else
             fprintf(output, "    beq $t%d, $zero, %s\n", condReg, elseLbl);
-            genStmt(node->data.ifstmt.thenBr);
-            fprintf(output, "    j %s\n", endLbl);
-            fprintf(output, "%s:\n", elseLbl);
 
+            // Then branch
+            genStmt(node->data.ifstmt.thenBr);
+
+            // Jump to end after executing the 'then' branch
+            fprintf(output, "    j %s\n", endLbl);
+
+            // Else branch label
+            fprintf(output, "%s:\n", elseLbl);
             if (node->data.ifstmt.elseBr)
                 genStmt(node->data.ifstmt.elseBr);
 
+            // End label
             fprintf(output, "%s:\n", endLbl);
+
             free(elseLbl);
             free(endLbl);
             break;

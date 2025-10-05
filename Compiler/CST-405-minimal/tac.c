@@ -7,6 +7,7 @@
 TACList tacList;
 TACList optimizedList;
 OptimizationStats opt_stats = {0};
+static int labelCount = 0;
 
 int isConstant(const char* s) {
     if (!s) return 0;
@@ -49,11 +50,13 @@ void optimizeTAC() {
 
                 // Replace with single assignment
                 third->op = TAC_ASSIGN;
+                free(third->arg1);  // Free old value
                 third->arg1 = strdup(buffer);
+                free(third->arg2);  // Free old value
                 third->arg2 = NULL;
 
-                // Remove redundant instructions
-                current->op = TAC_NOP;  // Mark for removal
+                // Mark redundant instructions for removal
+                current->op = TAC_NOP;
                 current->next->op = TAC_NOP;
 
                 opt_stats.constant_folded++;
@@ -66,6 +69,7 @@ void optimizeTAC() {
             current->next->op == TAC_ASSIGN &&
             strcmp(current->next->arg1, current->result) == 0) {
 
+            free(current->next->arg1);  // Free old value
             current->next->arg1 = strdup(current->arg1);
             current->op = TAC_NOP;
             opt_stats.eliminated_temps++;
@@ -74,8 +78,17 @@ void optimizeTAC() {
         current = current->next;
     }
 
-    // Remove NOP instructions
+    // Remove NOP instructions from the original list
     removeNOPs();
+
+    current = tacList.head;
+    while (current) {
+        if (current->op != TAC_NOP) {  // Skip any remaining NOPs
+            TACInstr* copy = createTAC(current->op, current->arg1, current->arg2, current->result);
+            appendOptimizedTAC(copy);
+        }
+        current = current->next;
+    }
 }
 
 void removeNOPs() {
@@ -93,7 +106,7 @@ void removeNOPs() {
                 current = current->next;
             }
             opt_stats.dead_code_removed++;
-            // Note: In production, should free toDelete
+            free(toDelete);  // Actually free the memory
         } else {
             prev = current;
             current = current->next;
@@ -105,6 +118,12 @@ char* newTemp() {
     char* temp = malloc(10);
     sprintf(temp, "t%d", tacList.tempCount++);
     return temp;
+}
+
+char* newTACLabel() {
+    char buffer[20];
+    snprintf(buffer, sizeof(buffer), "L%d", labelCount++);
+    return strdup(buffer);
 }
 
 TACInstr* createTAC(TACOp op, char* arg1, char* arg2, char* result) {
@@ -152,18 +171,27 @@ char* generateTACExpr(ASTNode* node) {
         
         case NODE_VAR:
             return strdup(node->data.name);
+
+        case NODE_BOOL: {
+            return strdup(node->data.boolean ? "1" : "0");
+        }
         
         case NODE_BINOP: {
             char* left = generateTACExpr(node->data.binop.left);
             char* right = generateTACExpr(node->data.binop.right);
             char* temp = newTemp();
-            
-            if (node->data.binop.op == '+') {
-                appendTAC(createTAC(TAC_ADD, left, right, temp));
-            } else if (node->data.binop.op == '*') {
-                appendTAC(createTAC(TAC_MUL, left, right, temp));
+
+            switch (node->data.binop.op) {
+                case BINOP_ADD: appendTAC(createTAC(TAC_ADD, left, right, temp)); break;
+                case BINOP_SUB: appendTAC(createTAC(TAC_SUB, left, right, temp)); break;
+                case BINOP_MUL: appendTAC(createTAC(TAC_MUL, left, right, temp)); break;
+                case BINOP_DIV: appendTAC(createTAC(TAC_DIV, left, right, temp)); break;
+                case BINOP_MOD: appendTAC(createTAC(TAC_MOD, left, right, temp)); break;
+                case BINOP_AND: appendTAC(createTAC(TAC_AND, left, right, temp)); break;
+                case BINOP_OR:  appendTAC(createTAC(TAC_OR, left, right, temp)); break;
+                default: break;
             }
-            
+
             return temp;
         }
 
@@ -174,14 +202,34 @@ char* generateTACExpr(ASTNode* node) {
             return temp;
         }
         case NODE_UNOP: {
-        char* expr = generateTACExpr(node->data.unop.expr);
-        char* temp = newTemp();
-        if (node->data.unop.op == '-') {
-            appendTAC(createTAC(TAC_NEG, expr, NULL, temp));
-        }
-    return temp;
-}
+            char* expr = generateTACExpr(node->data.unop.expr);
+            char* temp = newTemp();
 
+            switch (node->data.unop.op) {
+                case UNOP_NEG:
+                    appendTAC(createTAC(TAC_NEG, expr, NULL, temp));
+                    break;
+                case UNOP_NOT:
+                    appendTAC(createTAC(TAC_NOT, expr, NULL, temp));
+                    break;
+            }
+            return temp;
+        }
+        case NODE_RELOP: {
+            char* left = generateTACExpr(node->data.relop.left);
+            char* right = generateTACExpr(node->data.relop.right);
+            char* temp = newTemp();
+
+            switch (node->data.relop.op) {
+                case RELOP_LT: appendTAC(createTAC(TAC_LT, left, right, temp)); break;
+                case RELOP_GT: appendTAC(createTAC(TAC_GT, left, right, temp)); break;
+                case RELOP_LE: appendTAC(createTAC(TAC_LE, left, right, temp)); break;
+                case RELOP_GE: appendTAC(createTAC(TAC_GE, left, right, temp)); break;
+                case RELOP_EQ: appendTAC(createTAC(TAC_EQ, left, right, temp)); break;
+                case RELOP_NE: appendTAC(createTAC(TAC_NE, left, right, temp)); break;
+            }
+            return temp;
+        }
         default:
             return NULL;
             
@@ -200,6 +248,25 @@ void generateTAC(ASTNode* node) {
         case NODE_ASSIGN: {
             char* expr = generateTACExpr(node->data.assign.value);
             appendTAC(createTAC(TAC_ASSIGN, expr, NULL, node->data.assign.var));
+            break;
+        }
+
+        case NODE_IF: {
+            char* cond = generateTACExpr(node->data.ifstmt.cond);
+            char* label_else = newTACLabel();
+            char* label_end = newTACLabel();
+
+            appendTAC(createTAC(TAC_IFZ, cond, NULL, label_else));
+            generateTAC(node->data.ifstmt.thenBr);
+
+            if (node->data.ifstmt.elseBr) {
+                appendTAC(createTAC(TAC_JUMP, NULL, NULL, label_end));
+                appendTAC(createTAC(TAC_LABEL, NULL, NULL, label_else));
+                generateTAC(node->data.ifstmt.elseBr);
+                appendTAC(createTAC(TAC_LABEL, NULL, NULL, label_end));
+            } else {
+                appendTAC(createTAC(TAC_LABEL, NULL, NULL, label_else));
+            }
             break;
         }
         
@@ -271,6 +338,39 @@ void printTAC() {
                 printf("%s = array[%s]", curr->result, curr->arg1);
                 printf("  // Array access\n");
                 break;
+            case TAC_IFZ:
+                printf("IFZ %s GOTO %s\n", curr->arg1, curr->result);
+                printf("          // If %s is zero, jump to %s\n", curr->arg1, curr->result);
+                break;
+            case TAC_JUMP:
+                printf("JUMP %s\n", curr->result);
+                printf("          // Unconditional jump to %s\n", curr->result);
+                break;
+            case TAC_LABEL:
+                printf("%s:\n", curr->result);
+                printf("          // Label %s\n", curr->result);
+                break;
+            case TAC_AND:
+                printf("%s = %s && %s\n", curr->result, curr->arg1, curr->arg2);
+                printf("          // Logical AND\n");
+                break;
+            case TAC_OR:
+                printf("%s = %s || %s\n", curr->result, curr->arg1, curr->arg2);
+                printf("          // Logical OR\n");
+                break;
+            case TAC_NOT:
+                printf("%s = !%s\n", curr->result, curr->arg1);
+                printf("          // Logical NOT\n");
+                break;
+            case TAC_NEG:
+                printf("%s = -%s\n", curr->result, curr->arg1);
+                break;
+            case TAC_LT: printf("%s = (%s < %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_GT: printf("%s = (%s > %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_LE: printf("%s = (%s <= %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_GE: printf("%s = (%s >= %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_EQ: printf("%s = (%s == %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_NE: printf("%s = (%s != %s)\n", curr->result, curr->arg1, curr->arg2); break;
             default:
                 break;
         }
@@ -307,6 +407,33 @@ void printOptimizedTAC() {
             case TAC_ARRAY_ACCESS:
                 printf("%s = array[%s]\n", curr->result, curr->arg1);
                 break;
+            case TAC_IFZ:
+                printf("IFZ %s GOTO %s\n", curr->arg1, curr->result);
+                break;
+            case TAC_JUMP:
+                printf("JUMP %s\n", curr->result);
+                break;
+            case TAC_LABEL:
+                printf("%s:\n", curr->result);
+                break;
+            case TAC_AND:
+                printf("%s = %s && %s\n", curr->result, curr->arg1, curr->arg2);
+                break;
+            case TAC_OR:
+                printf("%s = %s || %s\n", curr->result, curr->arg1, curr->arg2);
+                break;
+            case TAC_NOT:
+                printf("%s = !%s\n", curr->result, curr->arg1);
+                break;
+            case TAC_NEG:
+                printf("%s = -%s\n", curr->result, curr->arg1);
+                break;
+            case TAC_LT: printf("%s = (%s < %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_GT: printf("%s = (%s > %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_LE: printf("%s = (%s <= %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_GE: printf("%s = (%s >= %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_EQ: printf("%s = (%s == %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_NE: printf("%s = (%s != %s)\n", curr->result, curr->arg1, curr->arg2); break;
             default:
                 break;
         }

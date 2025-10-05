@@ -53,7 +53,14 @@ ASTNode* createVar(char* name) {
     return node;
 }
 
-ASTNode* createBinOp(char op, ASTNode* left, ASTNode* right) {
+ASTNode* createBool(bool value) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_BOOL;
+    node->data.boolean = value;
+    return node;
+}
+
+ASTNode* createBinOp(BinOpKind op, ASTNode* left, ASTNode* right) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_BINOP;
     node->data.binop.op = op;
@@ -62,7 +69,7 @@ ASTNode* createBinOp(char op, ASTNode* left, ASTNode* right) {
     return node;
 }
 
-ASTNode* createUnaryOp(char op, ASTNode* expr) {
+ASTNode* createUnaryOp(UnOpKind op, ASTNode* expr) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_UNOP;
     node->data.unop.op = op;
@@ -158,14 +165,46 @@ void printAST(ASTNode* node, int level) {
         case NODE_VAR:
             printf("VAR(%s)\n", node->data.name);
             break;
+        case NODE_BOOL:
+            printf("BOOL(%s)\n", node->data.boolean ? "true" : "false");
+            break;
         case NODE_BINOP:
-            printf("BINOP(%c)\n", node->data.binop.op);
+            printf("BINOP(");
+            switch (node->data.binop.op) {
+                case BINOP_ADD: printf("+"); break;
+                case BINOP_SUB: printf("-"); break;
+                case BINOP_MUL: printf("*"); break;
+                case BINOP_DIV: printf("/"); break;
+                case BINOP_MOD: printf("%%"); break;
+                case BINOP_AND: printf("&&"); break;
+                case BINOP_OR:  printf("||"); break;
+            }
+            printf(")\n");
             printAST(node->data.binop.left, level + 1);
             printAST(node->data.binop.right, level + 1);
             break;
         case NODE_UNOP:
-            printf("UNOP(%c)\n", node->data.unop.op);
+            printf("UNOP(");
+            switch (node->data.unop.op) {
+                case UNOP_NEG: printf("-"); break;
+                case UNOP_NOT: printf("!"); break;
+            }
+            printf(")\n");
             printAST(node->data.unop.expr, level + 1);
+            break;
+        case NODE_RELOP:
+            printf("RELOP(");
+            switch (node->data.relop.op) {
+                case RELOP_LT: printf("<"); break;
+                case RELOP_GT: printf(">"); break;
+                case RELOP_LE: printf("<="); break;
+                case RELOP_GE: printf(">="); break;
+                case RELOP_EQ: printf("=="); break;
+                case RELOP_NE: printf("!="); break;
+            }
+            printf(")\n");
+            printAST(node->data.relop.left, level + 1);
+            printAST(node->data.relop.right, level + 1);
             break;
         case NODE_DECL:
             printf("DECL(%s)\n", node->data.name);
@@ -195,11 +234,11 @@ void printAST(ASTNode* node, int level) {
             printAST(node->data.ifstmt.cond, level + 1);
             for (int i = 0; i < level; i++) printf("  ");
             printf("THEN:\n");
-            printAST(node->data.ifstmt.thenBr, level + 2);
+            printAST(node->data.ifstmt.thenBr, level + 1);
             if (node->data.ifstmt.elseBr) {
                 for (int i = 0; i < level; i++) printf("  ");
                 printf("ELSE:\n");
-                printAST(node->data.ifstmt.elseBr, level + 2);
+                printAST(node->data.ifstmt.elseBr, level + 1);
             }
             break;
         case NODE_STMT_LIST:

@@ -1,12 +1,16 @@
+%debug
 %{
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include "ast.h"
 
 extern int yylex();
 extern int yyparse();
 extern FILE* yyin;
+extern char *yytext;     /* from lexer */
+extern int yylineno;     /* set by flex when %option yylineno */
 void yyerror(const char* s);
 ASTNode* root = NULL;
 %}
@@ -16,6 +20,7 @@ ASTNode* root = NULL;
     int num;
     float floats;
     char* str;
+    bool boolean;
     struct ASTNode* node;
 }
 
@@ -23,19 +28,26 @@ ASTNode* root = NULL;
 %token <num> NUM
 %token <floats> FLOAT_LITERAL
 %token <str> ID
-%token INT FLOAT PRINT IF ELSE
+%token <boolean> BOOL_LITERAL
+%token INT FLOAT BOOL PRINT IF ELSE
 %token EQ NE LE GE LT GT
+%token AND OR NOT
 
 /* === Operator precedence === */
 %right '='
+%left OR
+%left AND
+%right NOT
 %left EQ NE
 %left LT LE GT GE
 %left '+' '-'
 %left '*' '/' '%'
 %right UMINUS
 
+%expect 1
+
 /* === Non-terminal types === */
-%type <node> program stmt_list stmt decl assign expr print_stmt if_stmt rel_expr block
+%type <node> program stmt_list stmt decl assign expr print_stmt if_stmt block
 
 %%
 
@@ -68,6 +80,7 @@ decl:
       INT ID ';'                  { $$ = createDecl($2); free($2); }
     | FLOAT ID ';'                { $$ = createDecl($2); free($2); }
     | INT ID '[' NUM ']' ';'      { $$ = createArrayDecl($2, $4); free($2); }
+    | BOOL ID ';'                 { $$ = createDecl($2); free($2); }
     ;
 
 /* --- Assignments --- */
@@ -93,29 +106,37 @@ print_stmt:
 expr:
       NUM                         { $$ = createNum($1); }
     | FLOAT_LITERAL               { $$ = createFloat($1); }
+    | BOOL_LITERAL                { $$ = createBool($1); }
     | ID                          { $$ = createVar($1); free($1); }
     | ID '[' expr ']'             { $$ = createArrayAccess($1, $3); free($1); }
-    | expr '+' expr               { $$ = createBinOp('+', $1, $3); }
-    | expr '-' expr               { $$ = createBinOp('-', $1, $3); }
-    | expr '*' expr               { $$ = createBinOp('*', $1, $3); }
-    | expr '/' expr               { $$ = createBinOp('/', $1, $3); }
-    | expr '%' expr               { $$ = createBinOp('%', $1, $3); }
-    | '-' expr %prec UMINUS       { $$ = createUnaryOp('-', $2); }
-    | rel_expr                    { $$ = $1; }
-    ;
+    | '(' expr ')'                { $$ = $2; }
 
-/* --- Relational Expressions --- */
-rel_expr:
-      expr LT expr                { $$ = createRelop(RELOP_LT, $1, $3); }
+    /* Arithmetic */
+    | expr '+' expr               { $$ = createBinOp(BINOP_ADD, $1, $3); }
+    | expr '-' expr               { $$ = createBinOp(BINOP_SUB, $1, $3); }
+    | expr '*' expr               { $$ = createBinOp(BINOP_MUL, $1, $3); }
+    | expr '/' expr               { $$ = createBinOp(BINOP_DIV, $1, $3); }
+    | expr '%' expr               { $$ = createBinOp(BINOP_MOD, $1, $3); }
+
+    /* Logical */
+    | expr AND expr               { $$ = createBinOp(BINOP_AND, $1, $3); }
+    | expr OR expr                { $$ = createBinOp(BINOP_OR, $1, $3); }
+
+    /* Relational - integrated directly into expr */
+    | expr LT expr                { $$ = createRelop(RELOP_LT, $1, $3); }
     | expr GT expr                { $$ = createRelop(RELOP_GT, $1, $3); }
     | expr LE expr                { $$ = createRelop(RELOP_LE, $1, $3); }
     | expr GE expr                { $$ = createRelop(RELOP_GE, $1, $3); }
     | expr EQ expr                { $$ = createRelop(RELOP_EQ, $1, $3); }
     | expr NE expr                { $$ = createRelop(RELOP_NE, $1, $3); }
+
+    /* Unary */
+    | '-' expr %prec UMINUS       { $$ = createUnaryOp(UNOP_NEG, $2); }
+    | NOT expr                    { $$ = createUnaryOp(UNOP_NOT, $2); }
     ;
 
 %%
 
 void yyerror(const char* s) {
-    fprintf(stderr, "Syntax Error: %s\n", s);
+    fprintf(stderr, "Syntax Error at line %d: %s (near \"%s\")\n", yylineno, s, yytext ? yytext : "<null>");
 }

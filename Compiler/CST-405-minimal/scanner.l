@@ -1,50 +1,73 @@
+%option yylineno
 %{
+#include <stdbool.h>
 #include "parser.tab.h"
 #include <stdio.h>
 #include <stdlib.h>
 %}
 
-%%
+/* Use a start condition for block comments */
+%x COMMENT
 
-"int"           { return INT; }
-"float"         { return FLOAT; }
-"print"         { return PRINT; }
-"if"            { return IF; }
-"else"          { return ELSE; }
-
-[0-9]+\.[0-9]+  { yylval.floats = atof(yytext); return FLOAT_LITERAL; }
-[0-9]+           { yylval.num = atoi(yytext); return NUM; }
-
-"=="            { return EQ; }
-"!="            { return NE; }
-"<="            { return LE; }
-">="            { return GE; }
-"<"             { return LT; }
-">"             { return GT; }
-
-[a-zA-Z_][a-zA-Z0-9_]*  { yylval.str = strdup(yytext); return ID; }
-
-"("             { return '('; }
-")"             { return ')'; }
-"{"             { return '{'; }
-"}"             { return '}'; }
-"["             { return '['; }
-"]"             { return ']'; }
-";"             { return ';'; }
-","             { return ','; }
-"="             { return '='; }
-"+"             { return '+'; }
-"-"             { return '-'; }
-"*"             { return '*'; }
-"/"             { return '/'; }
-"%"             { return '%'; }
-
-[ \t\r\n]+      ;   /* ignore whitespace */
-
-.               { printf("Unknown token: %s\n", yytext); }
+/* === Regular Definitions === */
+digit       [0-9]
+letter      [a-zA-Z_]
+identifier  {letter}({letter}|{digit})*
+floatlit    {digit}+"."{digit}*
+whitespace  [ \t\r\n]+
 
 %%
 
-int yywrap(void) {
-    return 1;
-}
+"int"       { return INT; }
+"float"     { return FLOAT; }
+"bool"      { return BOOL; }
+"if"        { return IF; }
+"else"      { return ELSE; }
+"print"     { return PRINT; }
+
+"//".*               { /* skip single-line comment */ }
+
+"/*"                 { BEGIN(COMMENT); }
+
+<COMMENT>[^*]+       { /* skip */ }
+<COMMENT>"*"+[^*/]*  { /* skip */ }
+<COMMENT>"*"+"/"     { BEGIN(INITIAL); }
+
+"true"      { yylval.boolean = true; return BOOL_LITERAL; }
+"false"     { yylval.boolean = false; return BOOL_LITERAL; }
+
+{floatlit}  { yylval.floats = atof(yytext); return FLOAT_LITERAL; }
+{digit}+    { yylval.num = atoi(yytext); return NUM; }
+{identifier} { yylval.str = strdup(yytext); return ID; }
+
+"=="        { return EQ; }
+"!="        { return NE; }
+"<="        { return LE; }
+">="        { return GE; }
+"<"         { return LT; }
+">"         { return GT; }
+"&&"        { return AND; }
+"||"        { return OR; }
+"!"         { return NOT; }
+
+";"         { return ';'; }
+"="         { return '='; }
+"("         { return '('; }
+")"         { return ')'; }
+"{"         { return '{'; }
+"}"         { return '}'; }
+"["         { return '['; }
+"]"         { return ']'; }
+"+"         { return '+'; }
+"-"         { return '-'; }
+"*"         { return '*'; }
+"/"         { return '/'; }
+"%"         { return '%'; }
+
+{whitespace}  { /* ignore */ }
+
+.           { printf("Unknown character: %s\n", yytext); }
+
+%%
+
+int yywrap() { return 1; }

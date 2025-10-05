@@ -16,6 +16,7 @@ extern FILE* yyin;
 extern ASTNode* root;
 
 int main(int argc, char* argv[]) {
+    init_ast_memory();
     if (argc != 3) {
         printf("Usage: %s <input.c> <output.s>\n", argv[0]);
         printf("Example: ./minicompiler test.c output.s\n");
@@ -110,6 +111,8 @@ int main(int argc, char* argv[]) {
     printf("╚════════════════════════════════════════════════════════════╝\n");
 
     fclose(yyin);
+    // Remove this duplicate yyparse() call - it's causing the segfault
+    // yyparse();
     return 0;
 }
 

@@ -2,6 +2,7 @@
 #define AST_H
 
 #include <stddef.h>
+#include <stdbool.h>
 
 /* === MEMORY POOL STRUCTURES === */
 #define POOL_SIZE 4096
@@ -25,6 +26,22 @@ typedef struct {
 void init_ast_memory();
 void* ast_alloc(size_t size);
 
+/* === ARITHMETIC & LOGICAL OPERATOR ENUMS === */
+typedef enum {
+    BINOP_ADD,   // +
+    BINOP_SUB,   // -
+    BINOP_MUL,   // *
+    BINOP_DIV,   // /
+    BINOP_MOD,   // %
+    BINOP_AND,   // &&
+    BINOP_OR     // ||
+} BinOpKind;
+
+typedef enum {
+    UNOP_NEG,    // -x
+    UNOP_NOT     // !x
+} UnOpKind;
+
 /* === RELATIONAL OPERATOR ENUM === */
 typedef enum {
     RELOP_LT,   // <
@@ -40,6 +57,7 @@ typedef enum {
     NODE_NUM,
     NODE_FLOAT,
     NODE_VAR,
+    NODE_BOOL,
     NODE_BINOP,
     NODE_UNOP,
     NODE_DECL,
@@ -49,69 +67,35 @@ typedef enum {
     NODE_ARRAY_DECL,
     NODE_ARRAY_ASSIGN,
     NODE_ARRAY_ACCESS,
-    NODE_RELOP,   // Relational expression (a < b, etc.)
-    NODE_IF       // If / else statement
+    NODE_RELOP,
+    NODE_IF,
 } NodeType;
 
 /* === AST NODE STRUCTURE === */
 typedef struct ASTNode {
     NodeType type;
     union {
+        // --- Literals & Variables ---
         int num;
         float decimal;
         char* name;
+        bool boolean;
 
-        struct {
-            char op;
-            struct ASTNode* left;
-            struct ASTNode* right;
-        } binop;
+        // --- Expressions ---
+        struct { BinOpKind op; struct ASTNode* left; struct ASTNode* right; } binop;
+        struct { UnOpKind op; struct ASTNode* expr; } unop;
+        struct { RelopKind op; struct ASTNode* left; struct ASTNode* right; } relop;
 
-        struct {
-            char op;
-            struct ASTNode* expr;
-        } unop;
-
-        struct {
-            char* var;
-            struct ASTNode* value;
-        } assign;
-
+        // --- Statements ---
+        struct { char* var; struct ASTNode* value; } assign;
         struct ASTNode* expr;  // For print
+        struct { struct ASTNode* stmt; struct ASTNode* next; } stmtlist;
+        struct { struct ASTNode* cond; struct ASTNode* thenBr; struct ASTNode* elseBr; } ifstmt;
 
-        struct {
-            struct ASTNode* stmt;
-            struct ASTNode* next;
-        } stmtlist;
-
-        struct {
-            char* name;
-            int size;
-        } array_decl;
-
-        struct {
-            char* name;
-            struct ASTNode* index;
-            struct ASTNode* value;
-        } array_assign;
-
-        struct {
-            char* name;
-            struct ASTNode* index;
-        } array_access;
-
-        struct {
-            RelopKind op;
-            struct ASTNode* left;
-            struct ASTNode* right;
-        } relop;
-
-        struct {
-            struct ASTNode* cond;
-            struct ASTNode* thenBr;
-            struct ASTNode* elseBr;
-        } ifstmt;
-
+        // --- Arrays ---
+        struct { char* name; int size; } array_decl;
+        struct { char* name; struct ASTNode* index; struct ASTNode* value; } array_assign;
+        struct { char* name; struct ASTNode* index; } array_access;
     } data;
 } ASTNode;
 
@@ -119,8 +103,9 @@ typedef struct ASTNode {
 ASTNode* createNum(int value);
 ASTNode* createFloat(float value);
 ASTNode* createVar(char* name);
-ASTNode* createBinOp(char op, ASTNode* left, ASTNode* right);
-ASTNode* createUnaryOp(char op, ASTNode* expr);
+ASTNode* createBool(bool value);
+ASTNode* createBinOp(BinOpKind op, ASTNode* left, ASTNode* right);
+ASTNode* createUnaryOp(UnOpKind op, ASTNode* expr);
 ASTNode* createDecl(char* name);
 ASTNode* createAssign(char* var, ASTNode* value);
 ASTNode* createPrint(ASTNode* expr);

@@ -29,7 +29,19 @@ typedef enum {
     TAC_ARRAY_ASSIGN,  
     TAC_ARRAY_ACCESS,
     TAC_NOP,
-    TAC_NEG
+    TAC_NEG,
+    TAC_IFZ,
+    TAC_JUMP,
+    TAC_LABEL,
+    TAC_AND,
+    TAC_OR,
+    TAC_NOT,
+    TAC_LT,
+    TAC_GT,
+    TAC_LE,
+    TAC_GE,
+    TAC_EQ,
+    TAC_NE,
 } TACOp;
 
 /* TAC INSTRUCTION STRUCTURE */
@@ -57,6 +69,7 @@ void initTAC();
 char* newTemp();
 TACInstr* createTAC(TACOp op, char* arg1, char* arg2, char* result);
 void appendTAC(TACInstr* instr);
+void appendOptimizedTAC(TACInstr* instr);
 void generateTAC(ASTNode* node);
 char* generateTACExpr(ASTNode* node);
 
@@ -65,6 +78,7 @@ void optimizeTAC();
 void printOptimizedTAC();
 void removeNOPs();
 int isConstant(const char* s);
+char* newTACLabel();
 
 
 #endif
