@@ -24,6 +24,9 @@ whitespace  [ \t\r\n]+
 "if"        { return IF; }
 "else"      { return ELSE; }
 "print"     { return PRINT; }
+"return"    { return RETURN; }
+"void"      { return VOID; }
+","         { return ','; }
 
 "//".*               { /* skip single-line comment */ }
 

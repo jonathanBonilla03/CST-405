@@ -52,6 +52,15 @@ typedef enum {
     RELOP_NE    // !=
 } RelopKind;
 
+/* === BASIC TYPE ENUM (store return/param types) === */
+typedef enum {
+    TYPE_INT,
+    TYPE_FLOAT,
+    TYPE_BOOL,
+    TYPE_VOID,
+    TYPE_UNKNOWN
+} TypeKind;
+
 /* === NODE TYPES === */
 typedef enum {
     NODE_NUM,
@@ -69,6 +78,14 @@ typedef enum {
     NODE_ARRAY_ACCESS,
     NODE_RELOP,
     NODE_IF,
+    NODE_FUNC_DECL,    // Function declaration
+    NODE_FUNC_CALL,    // Function call (in expressions)
+    NODE_PARAM,        // Parameter declaration
+    NODE_PARAM_LIST,   // List of parameters
+    NODE_ARG_LIST,     // List of arguments in call
+    NODE_RETURN,       // Return statement
+    NODE_FUNC_LIST,    // List of function declarations
+    NODE_BLOCK         // Compound statement (for scoping)
 } NodeType;
 
 /* === AST NODE STRUCTURE === */
@@ -96,6 +113,35 @@ typedef struct ASTNode {
         struct { char* name; int size; } array_decl;
         struct { char* name; struct ASTNode* index; struct ASTNode* value; } array_assign;
         struct { char* name; struct ASTNode* index; } array_access;
+        // Function declaration
+        struct {
+            char* returnType;        // "int" or "void"
+            char* name;              // Function name
+            struct ASTNode* params;  // Parameter list
+            struct ASTNode* body;    // Function body (stmt list)
+        } func_decl;
+
+        // Function call
+        struct {
+            char* name;              // Function name
+            struct ASTNode* args;    // Argument list
+        } func_call;
+
+        // Parameter
+        struct {
+            char* type;              // Parameter type
+            char* name;              // Parameter name
+        } param;
+
+        // Parameter/Argument list
+        struct {
+            struct ASTNode* item;    // Current param/arg
+            struct ASTNode* next;    // Rest of list
+        } list;
+
+        // Return statement
+        struct ASTNode* return_expr; // Expression to return (NULL for void)
+
     } data;
 } ASTNode;
 
@@ -115,6 +161,19 @@ ASTNode* createArrayAssign(char* name, ASTNode* index, ASTNode* value);
 ASTNode* createArrayAccess(char* name, ASTNode* index);
 ASTNode* createRelop(RelopKind op, ASTNode* left, ASTNode* right);
 ASTNode* createIf(ASTNode* cond, ASTNode* thenBr, ASTNode* elseBr);
+ASTNode* createFuncDecl(char* returnType, char* name,
+                        ASTNode* params, ASTNode* body);
+ASTNode* createFuncCall(char* name, ASTNode* args);
+ASTNode* createParam(char* type, char* name);
+ASTNode* createParamList(ASTNode* param, ASTNode* next);
+ASTNode* createArgList(ASTNode* arg, ASTNode* next);
+ASTNode* createReturn(ASTNode* expr);
+ASTNode* createFuncList(ASTNode* func, ASTNode* next);
 void printAST(ASTNode* node, int level);
+void init_ast_memory();
+void* ast_alloc(size_t size);
+char* ast_strdup(const char* s);
+void ast_reset();      /* reset pools for reuse (keeps memory, resets used counters) */
+void ast_free_all();   /* free all pools */
 
 #endif

@@ -1,34 +1,98 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include "ast.h"
 
 /* === MEMORY MANAGEMENT === */
 static ASTMemoryManager ast_manager;
 
+/* alignment helper */
+static size_t align_size(size_t size) {
+    size_t a = sizeof(void*);
+    return (size + a - 1) & ~(a - 1);
+}
+
 void init_ast_memory() {
-    ast_manager.head = malloc(sizeof(MemPool));
-    ast_manager.head->memory = malloc(POOL_SIZE);
-    ast_manager.head->used = 0;
-    ast_manager.head->size = POOL_SIZE;
-    ast_manager.head->next = NULL;
+    ast_manager.head = NULL;
+    ast_manager.current = NULL;
+    ast_manager.total_allocations = 0;
+    ast_manager.pool_count = 0;
+    ast_manager.total_memory = 0;
+
+    /* allocate first pool */
+    MemPool* p = malloc(sizeof(MemPool));
+    p->memory = malloc(POOL_SIZE);
+    p->used = 0;
+    p->size = POOL_SIZE;
+    p->next = NULL;
+    ast_manager.head = ast_manager.current = p;
+    ast_manager.pool_count = 1;
+    ast_manager.total_memory = POOL_SIZE;
+}
+
+/* allocate memory from pool (aligned). If request > POOL_SIZE, create a dedicated pool sized to the request. */
+void* ast_alloc(size_t size) {
+    size = align_size(size);
+    if (!ast_manager.head) init_ast_memory();
+
+    MemPool* cur = ast_manager.current;
+
+    /* if request doesn't fit current pool, find or create next pool */
+    if (cur->used + size > cur->size) {
+        /* if size is larger than POOL_SIZE, create a dedicated pool for this allocation */
+        size_t new_pool_size = (size > POOL_SIZE) ? size : POOL_SIZE;
+        MemPool* np = malloc(sizeof(MemPool));
+        np->memory = malloc(new_pool_size);
+        np->used = 0;
+        np->size = new_pool_size;
+        np->next = NULL;
+
+        cur->next = np;
+        ast_manager.current = np;
+        ast_manager.pool_count++;
+        ast_manager.total_memory += new_pool_size;
+        cur = np;
+    }
+
+    void* ptr = cur->memory + cur->used;
+    cur->used += size;
+    ast_manager.total_allocations++;
+    return ptr;
+}
+
+/* duplicate string into AST pool */
+char* ast_ast_strdup(const char* s) {
+    if (!s) return NULL;
+    size_t len = strlen(s) + 1;
+    char* p = (char*)ast_alloc(len);
+    memcpy(p, s, len);
+    return p;
+}
+
+/* reset used counters so pools can be reused without freeing memory */
+void ast_reset() {
+    MemPool* p = ast_manager.head;
+    while (p) {
+        p->used = 0;
+        p = p->next;
+    }
     ast_manager.current = ast_manager.head;
 }
 
-void* ast_alloc(size_t size) {
-    if (!ast_manager.current || ast_manager.current->used + size > ast_manager.current->size) {
-        MemPool* new_pool = malloc(sizeof(MemPool));
-        new_pool->memory = malloc(POOL_SIZE);
-        new_pool->used = 0;
-        new_pool->size = POOL_SIZE;
-        new_pool->next = NULL;
-        ast_manager.current->next = new_pool;
-        ast_manager.current = new_pool;
+/* free all pools (call on program shutdown) */
+void ast_free_all() {
+    MemPool* p = ast_manager.head;
+    while (p) {
+        MemPool* nxt = p->next;
+        free(p->memory);
+        free(p);
+        p = nxt;
     }
-
-    void* ptr = ast_manager.current->memory + ast_manager.current->used;
-    ast_manager.current->used += size;
-    return ptr;
+    ast_manager.head = ast_manager.current = NULL;
+    ast_manager.pool_count = 0;
+    ast_manager.total_allocations = 0;
+    ast_manager.total_memory = 0;
 }
 
 /* === NODE CONSTRUCTORS === */
@@ -49,7 +113,7 @@ ASTNode* createFloat(float value) {
 ASTNode* createVar(char* name) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_VAR;
-    node->data.name = strdup(name);
+    node->data.name = ast_strdup(name);
     return node;
 }
 
@@ -80,14 +144,14 @@ ASTNode* createUnaryOp(UnOpKind op, ASTNode* expr) {
 ASTNode* createDecl(char* name) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_DECL;
-    node->data.name = strdup(name);
+    node->data.name = ast_strdup(name);
     return node;
 }
 
 ASTNode* createAssign(char* var, ASTNode* value) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_ASSIGN;
-    node->data.assign.var = strdup(var);
+    node->data.assign.var = ast_strdup(var);
     node->data.assign.value = value;
     return node;
 }
@@ -110,7 +174,7 @@ ASTNode* createStmtList(ASTNode* stmt1, ASTNode* stmt2) {
 ASTNode* createArrayDecl(char* name, int size) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_ARRAY_DECL;
-    node->data.array_decl.name = strdup(name);
+    node->data.array_decl.name = ast_strdup(name);
     node->data.array_decl.size = size;
     return node;
 }
@@ -118,7 +182,7 @@ ASTNode* createArrayDecl(char* name, int size) {
 ASTNode* createArrayAssign(char* name, ASTNode* index, ASTNode* value) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_ARRAY_ASSIGN;
-    node->data.array_assign.name = strdup(name);
+    node->data.array_assign.name = ast_strdup(name);
     node->data.array_assign.index = index;
     node->data.array_assign.value = value;
     return node;
@@ -127,7 +191,7 @@ ASTNode* createArrayAssign(char* name, ASTNode* index, ASTNode* value) {
 ASTNode* createArrayAccess(char* name, ASTNode* index) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_ARRAY_ACCESS;
-    node->data.array_access.name = strdup(name);
+    node->data.array_access.name = ast_strdup(name);
     node->data.array_access.index = index;
     return node;
 }
@@ -147,6 +211,63 @@ ASTNode* createIf(ASTNode* cond, ASTNode* thenBr, ASTNode* elseBr) {
     node->data.ifstmt.cond = cond;
     node->data.ifstmt.thenBr = thenBr;
     node->data.ifstmt.elseBr = elseBr;
+    return node;
+}
+
+ASTNode* createReturn(ASTNode* expr) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_RETURN;
+    node->data.return_expr = expr;
+    return node;
+}
+
+ASTNode* createFuncDecl(char* returnType, char* name, ASTNode* params, ASTNode* body) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_FUNC_DECL;
+    node->data.func_decl.returnType = ast_strdup(returnType);
+    node->data.func_decl.name = ast_strdup(name);
+    node->data.func_decl.params = params;
+    node->data.func_decl.body = body;
+    return node;
+}
+
+ASTNode* createFuncCall(char* name, ASTNode* args) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_FUNC_CALL;
+    node->data.func_call.name = ast_strdup(name);
+    node->data.func_call.args = args;
+    return node;
+}
+
+ASTNode* createParam(char* type, char* name) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_PARAM;
+    node->data.param.type = ast_strdup(type);
+    node->data.param.name = ast_strdup(name);
+    return node;
+}
+
+ASTNode* createParamList(ASTNode* param, ASTNode* next) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_PARAM_LIST;
+    node->data.list.item = param;
+    node->data.list.next = next;
+    return node;
+}
+
+ASTNode* createArgList(ASTNode* arg, ASTNode* next) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_ARG_LIST;
+    node->data.list.item = arg;
+    node->data.list.next = next;
+    return node;
+}
+
+ASTNode* createFuncList(ASTNode* func, ASTNode* next) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_FUNC_LIST;
+    node->data.list.item = func;
+    node->data.list.next = next;
     return node;
 }
 
@@ -243,6 +364,54 @@ void printAST(ASTNode* node, int level) {
             break;
         case NODE_STMT_LIST:
             printf("STMT_LIST\n");
+            printAST(node->data.stmtlist.stmt, level + 1);
+            printAST(node->data.stmtlist.next, level + 1);
+            break;
+        case NODE_RETURN:
+            printf("RETURN\n");
+            printAST(node->data.return_expr, level + 1);
+            break;
+        case NODE_FUNC_DECL:
+            printf("FUNC_DECL(%s) returns=%s\n", node->data.func_decl.name,
+                   node->data.func_decl.returnType ? node->data.func_decl.returnType : "<null>");
+            if (node->data.func_decl.params) {
+                for (int i = 0; i < level + 1; i++) printf("  ");
+                printf("PARAMS:\n");
+                printAST(node->data.func_decl.params, level + 2);
+            }
+            for (int i = 0; i < level + 1; i++) printf("  ");
+            printf("BODY:\n");
+            printAST(node->data.func_decl.body, level + 2);
+            break;
+        case NODE_FUNC_CALL:
+            printf("FUNC_CALL(%s)\n", node->data.func_call.name);
+            if (node->data.func_call.args) {
+                for (int i = 0; i < level + 1; i++) printf("  ");
+                printf("ARGS:\n");
+                printAST(node->data.func_call.args, level + 2);
+            }
+            break;
+        case NODE_PARAM:
+            printf("PARAM(%s %s)\n", node->data.param.type, node->data.param.name);
+            break;
+        case NODE_PARAM_LIST:
+            printf("PARAM_LIST\n");
+            printAST(node->data.list.item, level + 1);
+            printAST(node->data.list.next, level + 1);
+            break;
+        case NODE_ARG_LIST:
+            printf("ARG_LIST\n");
+            printAST(node->data.list.item, level + 1);
+            printAST(node->data.list.next, level + 1);
+            break;
+        case NODE_FUNC_LIST:
+            printf("FUNC_LIST\n");
+            printAST(node->data.list.item, level + 1);
+            printAST(node->data.list.next, level + 1);
+            break;
+        case NODE_BLOCK:
+            printf("BLOCK\n");
+            /* block uses stmt_list representation in parser; print it */
             printAST(node->data.stmtlist.stmt, level + 1);
             printAST(node->data.stmtlist.next, level + 1);
             break;

@@ -47,14 +47,45 @@ ASTNode* root = NULL;
 %expect 1
 
 /* === Non-terminal types === */
-%type <node> program stmt_list stmt decl assign expr print_stmt if_stmt block
+%type <node> program stmt_list stmt decl assign expr print_stmt if_stmt block func_decl func_def param_list param arg_list return_stmt call
+%type <str> type
 
 %%
 
 /* === Grammar === */
 
 program:
-    stmt_list                     { root = $1; }
+    func_list { $$ = $1; }
+    ;
+
+func_list:
+    func_decl { $$ = $1; }
+    | func_list func_decl { $$ = createFuncList($1, $2); }
+    ;
+
+func_decl:
+    type ID '(' param_list ')' '{' stmt_list '}' {
+        $$ = createFuncDecl($1, $2, $4, $7);
+    }
+    | type ID '(' ')' '{' stmt_list '}' {
+        $$ = createFuncDecl($1, $2, NULL, $6);
+    }
+    ;
+
+type:
+    INT { $$ = "int"; }
+    | FLOAT { $$ = "float"; }
+    | BOOL { $$ = "bool"; }
+    | VOID { $$ = "void"; }
+    ;
+
+param_list:
+    param { $$ = $1; }
+    | param_list ',' param { $$ = createParamList($1, $3); }
+    ;
+
+param:
+    type ID { $$ = createParam($1, $2); }
     ;
 
 stmt_list:
@@ -67,6 +98,12 @@ stmt:
     | assign
     | print_stmt
     | if_stmt
+    | return_stmt
+    ;
+
+return_stmt:
+    RETURN expr ';' { $$ = createReturn($2); }
+    | RETURN ';' { $$ = createReturn(NULL); }
     ;
 
 /* --- Block: { statements } or single stmt --- */
@@ -133,6 +170,13 @@ expr:
     /* Unary */
     | '-' expr %prec UMINUS       { $$ = createUnaryOp(UNOP_NEG, $2); }
     | NOT expr                    { $$ = createUnaryOp(UNOP_NOT, $2); }
+    | ID '(' arg_list ')' { $$ = createFuncCall($1, $3); }
+    | ID '(' ')' { $$ = createFuncCall($1, NULL); }
+    ;
+
+arg_list:
+    expr { $$ = $1; }
+    | arg_list ',' expr { $$ = createArgList($1, $3); }
     ;
 
 %%
