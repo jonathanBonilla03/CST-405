@@ -62,7 +62,7 @@ void* ast_alloc(size_t size) {
 }
 
 /* duplicate string into AST pool */
-char* ast_ast_strdup(const char* s) {
+char* ast_strdup(const char* s) {
     if (!s) return NULL;
     size_t len = strlen(s) + 1;
     char* p = (char*)ast_alloc(len);

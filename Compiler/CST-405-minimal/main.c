@@ -123,7 +123,7 @@ void test_symbol_table_performance() {
     for (int i = 0; i < 1000; i++) {
         char varname[20];
         sprintf(varname, "var_%d", i);
-        addVar(varname);
+        addVar(varname, "int");
     }
 
     for (int i = 0; i < 10000; i++) {

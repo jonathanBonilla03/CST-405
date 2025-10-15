@@ -42,6 +42,11 @@ typedef enum {
     TAC_GE,
     TAC_EQ,
     TAC_NE,
+    TAC_PARAM,       // Pass parameter: PARAM arg
+    TAC_CALL,        // Function call: result = CALL func_name, num_params
+    TAC_RETURN,      // Return value: RETURN value
+    TAC_FUNC_BEGIN,  // Mark function start: FUNC_BEGIN name
+    TAC_FUNC_END     // Mark function end: FUNC_END name
 } TACOp;
 
 /* TAC INSTRUCTION STRUCTURE */
@@ -50,6 +55,7 @@ typedef struct TACInstr {
     char* arg1;
     char* arg2;
     char* result;
+    int paramCount;  // For CALL instruction: number of params
     struct TACInstr* next;
 } TACInstr;
 
@@ -68,6 +74,7 @@ extern TACList optimizedList;
 void initTAC();
 char* newTemp();
 TACInstr* createTAC(TACOp op, char* arg1, char* arg2, char* result);
+TACInstr* createTACWithParamCount(TACOp op, char* arg1, char* arg2, char* result, int paramCount);
 void appendTAC(TACInstr* instr);
 void appendOptimizedTAC(TACInstr* instr);
 void generateTAC(ASTNode* node);
@@ -77,7 +84,10 @@ void printTAC();
 void optimizeTAC();
 void printOptimizedTAC();
 void removeNOPs();
+void eliminateDeadCode();
+void inlineSmallFunctions();
 int isConstant(const char* s);
+int isSmallFunction(const char* funcName);
 char* newTACLabel();
 
 

@@ -220,7 +220,7 @@ void genStmt(ASTNode* node) {
 
     switch (node->type) {
         case NODE_DECL: {
-            int offset = addVar(node->data.name);
+            int offset = addVar(node->data.name, "int");  // Default to int for now
             fprintf(output, "    # Declared %s at offset %d\n", node->data.name, offset);
             break;
         }

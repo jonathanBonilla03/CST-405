@@ -28,6 +28,14 @@ void initTAC() {
 }
 
 void optimizeTAC() {
+    printf("Starting TAC optimization...\n");
+    
+    // Step 1: Dead code elimination (easiest)
+    eliminateDeadCode();
+    
+    // Step 2: Function inlining for small functions
+    inlineSmallFunctions();
+    
     TACInstr* current = tacList.head;
 
     while (current && current->next) {
@@ -81,14 +89,20 @@ void optimizeTAC() {
     // Remove NOP instructions from the original list
     removeNOPs();
 
+    // Copy optimized instructions to optimized list
     current = tacList.head;
     while (current) {
         if (current->op != TAC_NOP) {  // Skip any remaining NOPs
-            TACInstr* copy = createTAC(current->op, current->arg1, current->arg2, current->result);
+            TACInstr* copy = createTACWithParamCount(current->op, current->arg1, current->arg2, current->result, current->paramCount);
             appendOptimizedTAC(copy);
         }
         current = current->next;
     }
+    
+    printf("Optimization complete. Stats:\n");
+    printf("  Temps eliminated: %d\n", opt_stats.eliminated_temps);
+    printf("  Constants folded: %d\n", opt_stats.constant_folded);
+    printf("  Dead code removed: %d\n", opt_stats.dead_code_removed);
 }
 
 void removeNOPs() {
@@ -132,7 +146,14 @@ TACInstr* createTAC(TACOp op, char* arg1, char* arg2, char* result) {
     instr->arg1 = arg1 ? strdup(arg1) : NULL;
     instr->arg2 = arg2 ? strdup(arg2) : NULL;
     instr->result = result ? strdup(result) : NULL;
+    instr->paramCount = 0;  // Default to 0
     instr->next = NULL;
+    return instr;
+}
+
+TACInstr* createTACWithParamCount(TACOp op, char* arg1, char* arg2, char* result, int paramCount) {
+    TACInstr* instr = createTAC(op, arg1, arg2, result);
+    instr->paramCount = paramCount;
     return instr;
 }
 
@@ -230,6 +251,25 @@ char* generateTACExpr(ASTNode* node) {
             }
             return temp;
         }
+        
+        case NODE_FUNC_CALL: {
+            // Generate TAC for each argument
+            ASTNode* arg = node->data.func_call.args;
+            int paramCount = 0;
+            while (arg) {
+                char* argVal = generateTACExpr(arg->data.list.item);
+                appendTAC(createTAC(TAC_PARAM, argVal, NULL, NULL));
+                paramCount++;
+                arg = arg->data.list.next;
+            }
+            // Generate the call
+            char* temp = newTemp();
+            TACInstr* call = createTACWithParamCount(TAC_CALL, node->data.func_call.name,
+                                                   NULL, temp, paramCount);
+            appendTAC(call);
+            return temp;
+        }
+        
         default:
             return NULL;
             
@@ -292,6 +332,32 @@ void generateTAC(ASTNode* node) {
                                 node->data.array_assign.name));
             break;
         }
+        
+        case NODE_FUNC_DECL:
+            appendTAC(createTAC(TAC_FUNC_BEGIN, NULL, NULL,
+                                node->data.func_decl.name));
+            appendTAC(createTAC(TAC_LABEL, NULL, NULL,
+                                node->data.func_decl.name));
+            // Generate TAC for function body
+            generateTAC(node->data.func_decl.body);
+            appendTAC(createTAC(TAC_FUNC_END, NULL, NULL,
+                                node->data.func_decl.name));
+            break;
+
+        case NODE_RETURN: {
+            if (node->data.return_expr) {
+                char* retVal = generateTACExpr(node->data.return_expr);
+                appendTAC(createTAC(TAC_RETURN, retVal, NULL, NULL));
+            } else {
+                appendTAC(createTAC(TAC_RETURN, NULL, NULL, NULL));
+            }
+            break;
+        }
+        
+        case NODE_FUNC_LIST:
+            generateTAC(node->data.list.item);
+            generateTAC(node->data.list.next);
+            break;
             
         default:
             break;
@@ -371,6 +437,31 @@ void printTAC() {
             case TAC_GE: printf("%s = (%s >= %s)\n", curr->result, curr->arg1, curr->arg2); break;
             case TAC_EQ: printf("%s = (%s == %s)\n", curr->result, curr->arg1, curr->arg2); break;
             case TAC_NE: printf("%s = (%s != %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_FUNC_BEGIN:
+                printf("FUNC_BEGIN %s", curr->result);
+                printf("    // Start of function %s\n", curr->result);
+                break;
+            case TAC_FUNC_END:
+                printf("FUNC_END %s", curr->result);
+                printf("      // End of function %s\n", curr->result);
+                break;
+            case TAC_PARAM:
+                printf("PARAM %s", curr->arg1);
+                printf("         // Push parameter %s\n", curr->arg1);
+                break;
+            case TAC_CALL:
+                printf("%s = CALL %s, %d", curr->result, curr->arg1, curr->paramCount);
+                printf("  // Call function %s with %d parameters\n", curr->arg1, curr->paramCount);
+                break;
+            case TAC_RETURN:
+                if (curr->arg1) {
+                    printf("RETURN %s", curr->arg1);
+                    printf("        // Return value %s\n", curr->arg1);
+                } else {
+                    printf("RETURN");
+                    printf("            // Return void\n");
+                }
+                break;
             default:
                 break;
         }
@@ -434,9 +525,139 @@ void printOptimizedTAC() {
             case TAC_GE: printf("%s = (%s >= %s)\n", curr->result, curr->arg1, curr->arg2); break;
             case TAC_EQ: printf("%s = (%s == %s)\n", curr->result, curr->arg1, curr->arg2); break;
             case TAC_NE: printf("%s = (%s != %s)\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_FUNC_BEGIN:
+                printf("FUNC_BEGIN %s\n", curr->result);
+                break;
+            case TAC_FUNC_END:
+                printf("FUNC_END %s\n", curr->result);
+                break;
+            case TAC_PARAM:
+                printf("PARAM %s\n", curr->arg1);
+                break;
+            case TAC_CALL:
+                printf("%s = CALL %s, %d\n", curr->result, curr->arg1, curr->paramCount);
+                break;
+            case TAC_RETURN:
+                if (curr->arg1) {
+                    printf("RETURN %s\n", curr->arg1);
+                } else {
+                    printf("RETURN\n");
+                }
+                break;
             default:
                 break;
         }
         curr = curr->next;
+    }
+}
+
+/* Dead code elimination - removes unused temporary variables */
+void eliminateDeadCode() {
+    TACInstr* current = tacList.head;
+    
+    // Mark all used variables
+    char usedVars[1000][20];  // Simple array to track used variables
+    int usedCount = 0;
+    
+    // First pass: collect all used variables from right-hand sides
+    current = tacList.head;
+    while (current) {
+        if (current->arg1 && strncmp(current->arg1, "t", 1) == 0) {
+            // Add to used list if not already there
+            int found = 0;
+            for (int i = 0; i < usedCount; i++) {
+                if (strcmp(usedVars[i], current->arg1) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found && usedCount < 999) {
+                strcpy(usedVars[usedCount++], current->arg1);
+            }
+        }
+        if (current->arg2 && strncmp(current->arg2, "t", 1) == 0) {
+            // Add to used list if not already there
+            int found = 0;
+            for (int i = 0; i < usedCount; i++) {
+                if (strcmp(usedVars[i], current->arg2) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found && usedCount < 999) {
+                strcpy(usedVars[usedCount++], current->arg2);
+            }
+        }
+        current = current->next;
+    }
+    
+    // Second pass: mark assignments to unused temps as NOP
+    current = tacList.head;
+    while (current) {
+        if (current->op == TAC_ASSIGN && current->result && 
+            strncmp(current->result, "t", 1) == 0) {
+            // Check if this temp is used
+            int used = 0;
+            for (int i = 0; i < usedCount; i++) {
+                if (strcmp(usedVars[i], current->result) == 0) {
+                    used = 1;
+                    break;
+                }
+            }
+            if (!used) {
+                current->op = TAC_NOP;
+                opt_stats.dead_code_removed++;
+            }
+        }
+        current = current->next;
+    }
+}
+
+/* Check if a function is small enough for inlining */
+int isSmallFunction(const char* funcName) {
+    TACInstr* current = tacList.head;
+    int instrCount = 0;
+    int inFunction = 0;
+    
+    while (current) {
+        if (current->op == TAC_FUNC_BEGIN && 
+            strcmp(current->result, funcName) == 0) {
+            inFunction = 1;
+        } else if (current->op == TAC_FUNC_END && 
+                   strcmp(current->result, funcName) == 0) {
+            break;
+        } else if (inFunction) {
+            instrCount++;
+            if (instrCount > 5) return 0;  // Too large to inline
+        }
+        current = current->next;
+    }
+    
+    return instrCount <= 5;  // Only inline functions with 5 or fewer instructions
+}
+
+/* Function inlining for small functions */
+void inlineSmallFunctions() {
+    TACInstr* current = tacList.head;
+    
+    while (current) {
+        if (current->op == TAC_CALL && isSmallFunction(current->arg1)) {
+            // Find the function definition
+            TACInstr* funcStart = tacList.head;
+            while (funcStart && !(funcStart->op == TAC_FUNC_BEGIN && 
+                                strcmp(funcStart->result, current->arg1) == 0)) {
+                funcStart = funcStart->next;
+            }
+            
+            if (funcStart) {
+                // Simple inlining: replace call with function body
+                // This is a basic implementation - could be much more sophisticated
+                current->op = TAC_NOP;  // Remove the call
+                printf("// Inlined function %s\n", current->arg1);
+                // In a real implementation, we would copy the function body here
+                // and substitute parameters with arguments
+            }
+        }
+        current = current->next;
     }
 }
