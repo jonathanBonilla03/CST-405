@@ -8,267 +8,228 @@
 
 FILE* output;
 int tempReg = 0;
-RegisterAllocator reg_alloc;
-
-/* ========== Label Management ========== */
 int labelCount = 0;
-char* newLabel(const char* prefix) {
+
+/* Track bytes of locals allocated in the current function */
+static int currentLocalBytes = 0;
+
+/* ============================================================
+ * LABEL / TEMP HELPERS
+ * ============================================================ */
+static char* newLabel(const char* prefix) {
     char* label = (char*)malloc(32);
-    if (!label) {
-        fprintf(stderr, "Memory allocation failed for label.\n");
-        exit(1);
-    }
+    if (!label) { perror("malloc"); exit(1); }
     sprintf(label, "%s_%d", prefix, labelCount++);
     return label;
 }
 
-/* ========== Register Allocator ========== */
-void init_register_allocator() {
-    for (int i = 0; i < 8; i++) {
-        char name[5];
-        sprintf(name, "$t%d", i);
-        reg_alloc.temp_regs[i].reg_name = strdup(name);
-        reg_alloc.temp_regs[i].is_free = 1;
-        reg_alloc.temp_regs[i].var_name = NULL;
-        reg_alloc.temp_regs[i].last_used = 0;
-    }
-    reg_alloc.clock = 0;
-}
-
-char* allocate_register(char* var) {
-    // Check if variable already in a register
-    for (int i = 0; i < 8; i++) {
-        if (reg_alloc.temp_regs[i].var_name &&
-            strcmp(reg_alloc.temp_regs[i].var_name, var) == 0) {
-            reg_alloc.temp_regs[i].last_used = reg_alloc.clock++;
-            return reg_alloc.temp_regs[i].reg_name;
-        }
-    }
-
-    // Allocate a free register
-    for (int i = 0; i < 8; i++) {
-        if (reg_alloc.temp_regs[i].is_free) {
-            reg_alloc.temp_regs[i].is_free = 0;
-            reg_alloc.temp_regs[i].var_name = strdup(var);
-            reg_alloc.temp_regs[i].last_used = reg_alloc.clock++;
-            return reg_alloc.temp_regs[i].reg_name;
-        }
-    }
-
-    // Use LRU if none free
-    int lru_idx = 0;
-    int min_time = reg_alloc.temp_regs[0].last_used;
-    for (int i = 1; i < 8; i++) {
-        if (reg_alloc.temp_regs[i].last_used < min_time) {
-            min_time = reg_alloc.temp_regs[i].last_used;
-            lru_idx = i;
-        }
-    }
-
-    // Save old variable to stack
-    if (reg_alloc.temp_regs[lru_idx].var_name) {
-        int offset = getVarOffset(reg_alloc.temp_regs[lru_idx].var_name);
-        fprintf(output, "    sw %s, %d($fp)\n",
-                reg_alloc.temp_regs[lru_idx].reg_name, offset);
-        free(reg_alloc.temp_regs[lru_idx].var_name);
-    }
-
-    reg_alloc.temp_regs[lru_idx].var_name = strdup(var);
-    reg_alloc.temp_regs[lru_idx].last_used = reg_alloc.clock++;
-
-    if (isVarDeclared(var)) {
-        int offset = getVarOffset(var);
-        fprintf(output, "    lw %s, %d($fp)\n",
-                reg_alloc.temp_regs[lru_idx].reg_name, offset);
-    }
-
-    return reg_alloc.temp_regs[lru_idx].reg_name;
-}
-
-/* ========== Temporary Register Handling ========== */
-int getNextTemp() {
-    int reg = tempReg++;
+static int getNextTemp() {
+    int r = tempReg++;
     if (tempReg > 7) tempReg = 0;
-    return reg;
+    return r;
 }
 
-/* ========== Expression Code Generation ========== */
-int genExpr(ASTNode* node) {
+/* ============================================================
+ * EXPRESSION GENERATION
+ * ============================================================ */
+static int genExpr(ASTNode* node);
+
+static int genRelop(ASTNode* node) {
+    int a = genExpr(node->data.relop.left);
+    int b = genExpr(node->data.relop.right);
+    int d = getNextTemp();
+    int t = getNextTemp();
+
+    switch (node->data.relop.op) {
+        case RELOP_LT:
+            fprintf(output, "    slt $t%d, $t%d, $t%d\n", d, a, b);
+            break;
+        case RELOP_GT:
+            fprintf(output, "    slt $t%d, $t%d, $t%d\n", d, b, a);
+            break;
+        case RELOP_LE:
+            fprintf(output, "    slt $t%d, $t%d, $t%d\n", t, b, a);
+            fprintf(output, "    xori $t%d, $t%d, 1\n", d, t);
+            break;
+        case RELOP_GE:
+            fprintf(output, "    slt $t%d, $t%d, $t%d\n", t, a, b);
+            fprintf(output, "    xori $t%d, $t%d, 1\n", d, t);
+            break;
+        case RELOP_EQ:
+            fprintf(output, "    subu $t%d, $t%d, $t%d\n", t, a, b);
+            fprintf(output, "    sltiu $t%d, $t%d, 1\n", d, t);
+            break;
+        case RELOP_NE:
+            fprintf(output, "    subu $t%d, $t%d, $t%d\n", t, a, b);
+            fprintf(output, "    sltu  $t%d, $zero, $t%d\n", d, t);
+            break;
+    }
+    return d;
+}
+
+static int genExpr(ASTNode* node) {
     if (!node) return -1;
 
     switch (node->type) {
         case NODE_NUM: {
-            int reg = getNextTemp();
-            fprintf(output, "    li $t%d, %d\n", reg, node->data.num);
-            return reg;
+            int r = getNextTemp();
+            fprintf(output, "    li $t%d, %d\n", r, node->data.num);
+            return r;
         }
 
-        case NODE_FLOAT: {
-            int reg = getNextTemp();
-            fprintf(output, "    li.s $f%d, %f\n", reg, node->data.decimal);
-            return reg;
-        }
-        
         case NODE_BOOL: {
-            int reg = getNextTemp();
-            fprintf(output, "    li $t%d, %d\n", reg, node->data.boolean ? 1 : 0);
-            return reg;
+            int r = getNextTemp();
+            fprintf(output, "    li $t%d, %d\n", r, node->data.boolean ? 1 : 0);
+            return r;
         }
 
         case NODE_VAR: {
-            int offset = getVarOffset(node->data.name);
-            if (offset == -1) {
-                fprintf(stderr, "Error: Variable %s not declared.\n", node->data.name);
+            int off = getVarOffset(node->data.name);
+            if (off == -1) {
+                fprintf(stderr, "Undeclared variable: %s\n", node->data.name);
                 exit(1);
             }
-            int reg = getNextTemp();
-            fprintf(output, "    lw $t%d, %d($sp)\n", reg, offset);
-            return reg;
+            int r = getNextTemp();
+            fprintf(output, "    lw $t%d, %d($fp)\n", r, off);
+            return r;
         }
 
         case NODE_BINOP: {
-            int leftReg  = genExpr(node->data.binop.left);
-            int rightReg = genExpr(node->data.binop.right);
-            int destReg  = getNextTemp();
+            int a = genExpr(node->data.binop.left);
+            int b = genExpr(node->data.binop.right);
+            int d = getNextTemp();
 
             switch (node->data.binop.op) {
-                case BINOP_ADD:
-                    fprintf(output, "    add $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg);
-                    break;
-                case BINOP_SUB:
-                    fprintf(output, "    sub $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg);
-                    break;
-                case BINOP_MUL:
-                    fprintf(output, "    mul $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg);
-                    break;
+                case BINOP_ADD: fprintf(output, "    add $t%d, $t%d, $t%d\n", d, a, b); break;
+                case BINOP_SUB: fprintf(output, "    sub $t%d, $t%d, $t%d\n", d, a, b); break;
+                case BINOP_MUL: fprintf(output, "    mul $t%d, $t%d, $t%d\n", d, a, b); break;
                 case BINOP_DIV:
-                    fprintf(output, "    div $t%d, $t%d\n", leftReg, rightReg);
-                    fprintf(output, "    mflo $t%d\n", destReg);
+                    fprintf(output, "    div $t%d, $t%d\n", a, b);
+                    fprintf(output, "    mflo $t%d\n", d);
                     break;
+                case BINOP_AND: fprintf(output, "    and $t%d, $t%d, $t%d\n", d, a, b); break;
+                case BINOP_OR:  fprintf(output, "    or  $t%d, $t%d, $t%d\n", d, a, b); break;
                 case BINOP_MOD:
-                    fprintf(output, "    div $t%d, $t%d\n", leftReg, rightReg);
-                    fprintf(output, "    mfhi $t%d\n", destReg);
+                    /* MIPS32: a % b -> div a,b ; mfhi d */
+                    fprintf(output, "    div $t%d, $t%d\n", a, b);
+                    fprintf(output, "    mfhi $t%d\n", d);
                     break;
-                case BINOP_AND:
-                    fprintf(output, "    and $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg);
-                    break;
-                case BINOP_OR:
-                    fprintf(output, "    or  $t%d, $t%d, $t%d\n", destReg, leftReg, rightReg);
-                    break;
-                default:
-                    fprintf(stderr, "Error: Unknown binary operator kind %d\n", node->data.binop.op);
-                    exit(1);
-            }
-            return destReg;
-        }
-
-        case NODE_UNOP: {
-            int exprReg = genExpr(node->data.unop.expr);
-            int destReg = getNextTemp();
-
-            switch (node->data.unop.op) {
-                case UNOP_NEG:
-                    fprintf(output, "    sub $t%d, $zero, $t%d\n", destReg, exprReg);
-                    break;
-                case UNOP_NOT:
-                    // Logical NOT: result = (expr == 0) ? 1 : 0
-                    fprintf(output, "    sltiu $t%d, $t%d, 1\n", destReg, exprReg);
-                    break;
-            }
-
-            return destReg;
-        }
-
-        case NODE_RELOP: {
-            int a = genExpr(node->data.relop.left);
-            int b = genExpr(node->data.relop.right);
-            int d = getNextTemp();      
-            int t = getNextTemp();      
-
-            switch (node->data.relop.op) {
-                case RELOP_LT: fprintf(output, "    slt $t%d, $t%d, $t%d\n", d, a, b); break;
-                case RELOP_GT: fprintf(output, "    slt $t%d, $t%d, $t%d\n", d, b, a); break;
-                case RELOP_LE:
-                    fprintf(output, "    slt $t%d, $t%d, $t%d\n", t, b, a);
-                    fprintf(output, "    xori $t%d, $t%d, 1\n", d, t);
-                    break;
-                case RELOP_GE:
-                    fprintf(output, "    slt $t%d, $t%d, $t%d\n", t, a, b);
-                    fprintf(output, "    xori $t%d, $t%d, 1\n", d, t);
-                    break;
-                case RELOP_EQ:
-                    fprintf(output, "    subu $t%d, $t%d, $t%d\n", t, a, b);
-                    fprintf(output, "    sltiu $t%d, $t%d, 1\n", d, t);
-                    break;
-                case RELOP_NE:
-                    fprintf(output, "    subu $t%d, $t%d, $t%d\n", t, a, b);
-                    fprintf(output, "    sltu  $t%d, $zero, $t%d\n", d, t);
-                    break;
+                default: break;
             }
             return d;
         }
 
+        case NODE_UNOP: {
+            int e = genExpr(node->data.unop.expr);
+            int d = getNextTemp();
+            if (node->data.unop.op == UNOP_NEG) {
+                fprintf(output, "    sub $t%d, $zero, $t%d\n", d, e);
+            } else {
+                /* logical NOT: d = (e == 0) ? 1 : 0 */
+                fprintf(output, "    sltiu $t%d, $t%d, 1\n", d, e);
+            }
+            return d;
+        }
+
+        case NODE_RELOP:
+            return genRelop(node);
+
+        case NODE_FUNC_CALL: {
+            /* Load args (up to 4) into $a0-$a3 from left to right */
+            ASTNode* arg = node->data.func_call.args;
+            int argNum = 0;
+
+            /* Accept either a linked NODE_ARG_LIST chain or a single expr */
+            while (arg && argNum < 4) {
+                ASTNode* cur = (arg->type == NODE_ARG_LIST) ? arg->data.list.item : arg;
+                int r = genExpr(cur);
+                fprintf(output, "    move $a%d, $t%d\n", argNum, r);
+                argNum++;
+                if (arg->type == NODE_ARG_LIST) arg = arg->data.list.next;
+                else break;
+            }
+
+            fprintf(output, "    jal %s\n", node->data.func_call.name);
+
+            int dest = getNextTemp();
+            fprintf(output, "    move $t%d, $v0\n", dest);
+            return dest;
+        }
+
         default:
-            fprintf(stderr, "Unsupported expression type: %d\n", node->type);
+            fprintf(stderr, "Unsupported expression node type: %d\n", node->type);
             exit(1);
     }
 }
 
-/* ========== Statement Code Generation ========== */
-void genStmt(ASTNode* node) {
+/* ============================================================
+ * STATEMENT GENERATION
+ * ============================================================ */
+static void genStmt(ASTNode* node);
+
+static void genStmt(ASTNode* node) {
     if (!node) return;
 
     switch (node->type) {
         case NODE_DECL: {
-            int offset = addVar(node->data.name, "int");  // Default to int for now
-            fprintf(output, "    # Declared %s at offset %d\n", node->data.name, offset);
+            /* Add to symtab and allocate 4 bytes on stack for this local */
+            int off = addVar(node->data.name, "int");
+            (void)off; /* offset already used by lw/sw with $fp */
+            fprintf(output, "    addi $sp, $sp, -4   # alloc local %s\n", node->data.name);
+            currentLocalBytes += 4;
             break;
         }
 
         case NODE_ASSIGN: {
-            int offset = getVarOffset(node->data.assign.var);
-            int valueReg = genExpr(node->data.assign.value);
-            fprintf(output, "    sw $t%d, %d($sp)\n", valueReg, offset);
+            int r   = genExpr(node->data.assign.value);
+            int off = getVarOffset(node->data.assign.var);
+            if (off == -1) {
+                fprintf(stderr, "Assign to undeclared variable: %s\n", node->data.assign.var);
+                exit(1);
+            }
+            fprintf(output, "    sw $t%d, %d($fp)\n", r, off);
             break;
         }
 
         case NODE_PRINT: {
-            int exprReg = genExpr(node->data.expr);
-            fprintf(output, "    move $a0, $t%d\n", exprReg);
-            fprintf(output, "    li $v0, 1\n");
-            fprintf(output, "    syscall\n");
-            fprintf(output, "    li $v0, 11\n");
-            fprintf(output, "    li $a0, 10\n");
-            fprintf(output, "    syscall\n");
+            int r = genExpr(node->data.expr);
+            fprintf(output, "    move $a0, $t%d\n", r);
+            fprintf(output, "    li $v0, 1\n    syscall\n");      /* print int */
+            fprintf(output, "    li $a0, 10\n    li $v0, 11\n    syscall\n"); /* newline */
             break;
         }
 
         case NODE_IF: {
-            char* elseLbl = newLabel("L_else");
-            char* endLbl  = newLabel("L_end");
+            char* elseLbl = newLabel("Lelse");
+            char* endLbl  = newLabel("Lend");
 
-            // Evaluate the condition
-            int condReg = genExpr(node->data.ifstmt.cond);
+            int c = genExpr(node->data.ifstmt.cond);
+            fprintf(output, "    beq $t%d, $zero, %s\n", c, elseLbl);
 
-            // If condition is false (== 0), jump to else
-            fprintf(output, "    beq $t%d, $zero, %s\n", condReg, elseLbl);
-
-            // Then branch
             genStmt(node->data.ifstmt.thenBr);
-
-            // Jump to end after executing the 'then' branch
             fprintf(output, "    j %s\n", endLbl);
 
-            // Else branch label
             fprintf(output, "%s:\n", elseLbl);
             if (node->data.ifstmt.elseBr)
                 genStmt(node->data.ifstmt.elseBr);
 
-            // End label
             fprintf(output, "%s:\n", endLbl);
+            free(elseLbl); free(endLbl);
+            break;
+        }
 
-            free(elseLbl);
-            free(endLbl);
+        case NODE_RETURN: {
+            if (node->data.return_expr) {
+                int r = genExpr(node->data.return_expr);
+                fprintf(output, "    move $v0, $t%d\n", r);
+            }
+            /* function epilogue */
+            fprintf(output, "    addi $sp, $sp, %d\n", currentLocalBytes);
+            fprintf(output, "    move $sp, $fp\n");
+            fprintf(output, "    lw $ra, 4($sp)\n");
+            fprintf(output, "    lw $fp, 0($sp)\n");
+            fprintf(output, "    addi $sp, $sp, 8\n");
+            fprintf(output, "    jr $ra\n");
             break;
         }
 
@@ -278,27 +239,107 @@ void genStmt(ASTNode* node) {
             break;
 
         default:
+            /* unhandled statement kind (arrays, etc.) */
             break;
     }
 }
 
-/* ========== Main Program Generation ========== */
+/* ============================================================
+ * FUNCTION DECLARATION HANDLING
+ * ============================================================ */
+static void genFunc(ASTNode* func) {
+    /* Label == function name; make 'main' visible from outside */
+    fprintf(output, "\n%s:\n", func->data.func_decl.name);
+
+    /* Prologue: save $fp/$ra, set new frame pointer */
+    fprintf(output, "    addi $sp, $sp, -8\n");
+    fprintf(output, "    sw $fp, 0($sp)\n");
+    fprintf(output, "    sw $ra, 4($sp)\n");
+    fprintf(output, "    move $fp, $sp\n");
+
+    enterScope();
+    currentLocalBytes = 0;
+
+    /* Parameters: add to scope and store $aN into their offsets */
+    ASTNode* p = func->data.func_decl.params;
+    int argN = 0;
+    while (p) {
+        ASTNode* cur = (p->type == NODE_PARAM_LIST) ? p->data.list.item : p;
+        if (cur && cur->type == NODE_PARAM) {
+            char* pname = cur->data.param.name;
+            addParameter(pname, cur->data.param.type);
+            int off = getVarOffset(pname); /* should be positive (8, 12, ...) per your symtab */
+            /* We standardize that params live at positive offsets in the frame,
+               but we still store current $aN into those slots so locals can load via lw. */
+            fprintf(output, "    sw $a%d, %d($fp)\n", argN, off);
+            argN++;
+        }
+        if (p->type == NODE_PARAM_LIST) p = p->data.list.next; else break;
+    }
+
+    /* Body */
+    genStmt(func->data.func_decl.body);
+
+    /* Default return for 'void' or missing explicit return: epilogue */
+    fprintf(output, "    addi $sp, $sp, %d\n", currentLocalBytes);
+    fprintf(output, "    move $sp, $fp\n");
+    fprintf(output, "    lw $ra, 4($sp)\n");
+    fprintf(output, "    lw $fp, 0($sp)\n");
+    fprintf(output, "    addi $sp, $sp, 8\n");
+    fprintf(output, "    jr $ra\n");
+
+    exitScope();
+}
+
+/* ============================================================
+ * MAIN DRIVER
+ * ============================================================ */
 void generateMIPS(ASTNode* root, const char* filename) {
     output = fopen(filename, "w");
-    if (!output) {
-        fprintf(stderr, "Cannot open output file %s\n", filename);
-        exit(1);
-    }
+    if (!output) { perror("Error opening output file"); exit(1); }
+
+    /* Preamble */
+    fprintf(output, ".data\nnewline: .asciiz \"\\n\"\n\n.text\n.globl main\n");
 
     initSymTab();
 
-    fprintf(output, ".data\nnewline: .asciiz \"\\n\"\n\n.text\n.globl main\nmain:\n");
-    fprintf(output, "    addi $sp, $sp, -400  # stack space\n");
+    if (!root) {
+        fclose(output);
+        return;
+    }
 
-    genStmt(root);
+    if (root->type == NODE_FUNC_LIST) {
+        ASTNode* n = root;
+        while (n) {
+            if (n->data.list.item)
+                genFunc(n->data.list.item);
+            n = n->data.list.next;
+        }
+    } else if (root->type == NODE_FUNC_DECL) {
+        genFunc(root);
+    } else {
+        /* Fallback: wrap statements in a synthetic main */
+        fprintf(output, "main:\n");
+        fprintf(output, "    addi $sp, $sp, -8\n");
+        fprintf(output, "    sw $fp, 0($sp)\n");
+        fprintf(output, "    sw $ra, 4($sp)\n");
+        fprintf(output, "    move $fp, $sp\n");
 
-    fprintf(output, "\n    addi $sp, $sp, 400\n");
-    fprintf(output, "    li $v0, 10\n");
-    fprintf(output, "    syscall\n");
+        enterScope();
+        currentLocalBytes = 0;
+
+        genStmt(root);
+
+        fprintf(output, "    addi $sp, $sp, %d\n", currentLocalBytes);
+        fprintf(output, "    move $sp, $fp\n");
+        fprintf(output, "    lw $ra, 4($sp)\n");
+        fprintf(output, "    lw $fp, 0($sp)\n");
+        fprintf(output, "    addi $sp, $sp, 8\n");
+        fprintf(output, "    li $v0, 10\n    syscall\n");
+
+        exitScope();
+    }
+
     fclose(output);
+    printf("✓ MIPS assembly generated: %s\n", filename);
 }

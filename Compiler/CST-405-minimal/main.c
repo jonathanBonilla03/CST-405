@@ -1,6 +1,6 @@
 /* MINIMAL C COMPILER - EDUCATIONAL VERSION
  * Demonstrates all compilation phases for a simplified C subset
- * Supports: int/float variables, arrays, arithmetic, print, if/else
+ * Supports: int/float variables, arrays, arithmetic, print, if/else, functions
  */
 
 #include <stdio.h>
@@ -17,9 +17,10 @@ extern ASTNode* root;
 
 int main(int argc, char* argv[]) {
     init_ast_memory();
+
     if (argc != 3) {
         printf("Usage: %s <input.c> <output.s>\n", argv[0]);
-        printf("Example: ./minicompiler test.c output.s\n");
+        printf("Example: ./minicompiler test.cminus output.s\n");
         return 1;
     }
 
@@ -111,8 +112,6 @@ int main(int argc, char* argv[]) {
     printf("╚════════════════════════════════════════════════════════════╝\n");
 
     fclose(yyin);
-    // Remove this duplicate yyparse() call - it's causing the segfault
-    // yyparse();
     return 0;
 }
 
@@ -133,6 +132,9 @@ void test_symbol_table_performance() {
     }
 
     end_benchmark(bench, "Symbol Table Performance");
-    printf("Collisions: %d\n", symtab.collisions);
+
+    // Removed the nonexistent field
+    // printf("Collisions: %d\n", symtab.collisions);
+
     free(bench);
 }

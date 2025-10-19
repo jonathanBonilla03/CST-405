@@ -1,6 +1,8 @@
 %option yylineno
 %{
+#define _GNU_SOURCE
 #include <stdbool.h>
+#include <string.h>
 #include "parser.tab.h"
 #include <stdio.h>
 #include <stdlib.h>

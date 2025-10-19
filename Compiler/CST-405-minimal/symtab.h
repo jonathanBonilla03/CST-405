@@ -1,70 +1,74 @@
 #ifndef SYMTAB_H
 #define SYMTAB_H
 
-/* SYMBOL TABLE WITH SCOPING SUPPORT
- * Tracks all declared variables and functions during compilation
- * Supports nested scopes for proper variable shadowing and function scoping
- * Maps names to their memory locations and type information
- * Used for semantic checking and code generation
- */
+/* ============================================================
+ * SYMBOL TABLE WITH SCOPING SUPPORT
+ * Tracks declared variables and functions across nested scopes.
+ * Manages stack offsets for parameters (+8, +12...) and locals (-4, -8...).
+ * Used during semantic analysis and code generation.
+ * ============================================================ */
 
-#define MAX_VARS 1000  /* Maximum number of variables per scope */
-#define MAX_PARAMS 20  /* Maximum number of function parameters */
+#define MAX_VARS   1000   /* Max number of variables per scope */
+#define MAX_PARAMS 20     /* Max number of parameters per function */
 
-/* Enhanced symbol entry */
+/* === Symbol Entry === */
 typedef struct {
-    char* name;
-    char* type;      // Variable type ("int", "float", "bool") or function signature
-    int offset;      // Stack offset (for variables)
-    int isFunction;  // 1 if this is a function, 0 if variable
-    int isArray;     // 1 if this is an array variable
-    int arraySize;   // Size of array (if isArray = 1)
-    int paramCount;  // Number of parameters (if function)
-    char** paramTypes; // Array of parameter types (if function)
+    char* name;           /* Identifier name */
+    char* type;           /* Type (e.g., "int", "float", "bool") or return type for functions */
+    int offset;           /* Stack offset from $fp (vars/params only) */
+    int isFunction;       /* 1 = function, 0 = variable */
+    int isArray;          /* 1 = array variable */
+    int arraySize;        /* Array length (if isArray) */
+    int paramCount;       /* Number of parameters (if function) */
+    char** paramTypes;    /* Parameter type list (if function) */
 } Symbol;
 
-/* Scope structure */
+/* === Scope Structure === */
 typedef struct Scope {
     Symbol vars[MAX_VARS];
-    int count;
-    int nextOffset;
-    struct Scope* parent;  // Link to enclosing scope
+    int count;             /* Number of symbols in this scope */
+
+    /* Separate offset spaces relative to $fp */
+    int nextLocalOffset;   /* Locals: -4, -8, -12... */
+    int nextParamOffset;   /* Params: +8, +12, +16... */
+
+    struct Scope* parent;  /* Link to enclosing scope */
 } Scope;
 
-/* Symbol table with scope stack */
+/* === Symbol Table === */
 typedef struct {
-    Scope* currentScope;   // Top of scope stack
-    Scope* globalScope;    // Always points to global
+    Scope* currentScope;   /* Active scope (top of stack) */
+    Scope* globalScope;    /* Persistent global scope */
 } SymbolTable;
 
-/* Global symbol table instance */
+/* === Global Symbol Table Instance === */
 extern SymbolTable symtab;
 
-/* SYMBOL TABLE OPERATIONS */
-void initSymTab();               /* Initialize empty symbol table with global scope */
-void enterScope();               /* Push new scope (entering function) */
-void exitScope();                /* Pop scope (leaving function) */
+/* === Symbol Table Operations === */
+void initSymTab();               /* Initialize global scope */
+void enterScope();               /* Push new function/block scope */
+void exitScope();                /* Pop current scope */
 
-/* Variable operations */
-int addVar(char* name, char* type);          /* Add variable to current scope, returns offset or -1 if duplicate */
-int addArrayVar(char* name, char* type, int size); /* Add array variable, returns offset or -1 if duplicate */
+/* === Variable Operations === */
+int addVar(char* name, char* type);                /* Add variable (local/global) */
+int addArrayVar(char* name, char* type, int size); /* Add array variable */
 
-/* Function operations */
+/* === Function Operations === */
 int addFunction(char* name, char* returnType,
                 char** paramTypes, int paramCount); /* Add function to global scope */
-int addParameter(char* name, char* type);    /* Add parameter to current scope */
+int addParameter(char* name, char* type);          /* Add parameter to current scope */
 
-/* Lookup operations */
-Symbol* lookupSymbol(char* name);            /* Search current + parent scopes */
-int isInCurrentScope(char* name);            /* Check only current scope */
-int getVarOffset(char* name);                /* Get stack offset for variable, -1 if not found */
-int isVarDeclared(char* name);               /* Check if variable exists (1=yes, 0=no) */
-int isArrayVar(char* name);                  /* Check if variable is an array (1=yes, 0=no) */
-int getArraySize(char* name);                /* Get size of array variable, -1 if not array or not found */
+/* === Lookup Operations === */
+Symbol* lookupSymbol(char* name);     /* Search current + parent scopes */
+int isInCurrentScope(char* name);     /* Check for duplicates */
+int getVarOffset(char* name);         /* Get stack offset for variable */
+int isVarDeclared(char* name);        /* Check if variable is declared */
+int isArrayVar(char* name);           /* Check if symbol is array */
+int getArraySize(char* name);         /* Return array size */
 
-/* Debug and utility */
-void printSymTab();                          /* Print current symbol table contents */
-void printCurrentScope();                    /* Print only current scope */
-void printAllScopes();                       /* Print all scopes in the stack */
+/* === Debugging and Printing === */
+void printCurrentScope();             /* Print symbols in current scope */
+void printSymTab();                   /* Alias for printCurrentScope() */
+void printAllScopes();                /* Print all nested scopes */
 
 #endif
