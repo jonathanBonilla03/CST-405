@@ -77,6 +77,7 @@ typedef enum {
     NODE_ARRAY_ASSIGN,
     NODE_ARRAY_ACCESS,
     NODE_RELOP,
+    NODE_CAST,
     NODE_IF,
     NODE_FUNC_DECL,    // Function declaration
     NODE_FUNC_CALL,    // Function call (in expressions)
@@ -102,6 +103,7 @@ typedef struct ASTNode {
         struct { BinOpKind op; struct ASTNode* left; struct ASTNode* right; } binop;
         struct { UnOpKind op; struct ASTNode* expr; } unop;
         struct { RelopKind op; struct ASTNode* left; struct ASTNode* right; } relop;
+        struct { char* targetType; struct ASTNode* expr; } cast;
 
         // --- Statements ---
         struct { char* var; struct ASTNode* value; } assign;
@@ -160,6 +162,7 @@ ASTNode* createArrayDecl(char* name, int size);
 ASTNode* createArrayAssign(char* name, ASTNode* index, ASTNode* value);
 ASTNode* createArrayAccess(char* name, ASTNode* index);
 ASTNode* createRelop(RelopKind op, ASTNode* left, ASTNode* right);
+ASTNode* createCast(char* targetType, ASTNode* expr);
 ASTNode* createIf(ASTNode* cond, ASTNode* thenBr, ASTNode* elseBr);
 ASTNode* createFuncDecl(char* returnType, char* name,
                         ASTNode* params, ASTNode* body);

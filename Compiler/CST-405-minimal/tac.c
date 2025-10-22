@@ -175,6 +175,18 @@ char* generateTACExpr(ASTNode* node) {
             return temp;
         }
 
+        case NODE_CAST: {
+            // For casting, just pass through the expression for now
+            return generateTACExpr(node->data.cast.expr);
+        }
+
+        case NODE_ARRAY_ACCESS: {
+            char* index = generateTACExpr(node->data.array_access.index);
+            char* temp = newTemp();
+            appendTAC(createTAC(TAC_ARRAY_ACCESS, node->data.array_access.name, index, temp));
+            return temp;
+        }
+
         default:
             return NULL;
     }
@@ -247,6 +259,17 @@ void generateTAC(ASTNode* node) {
             generateTAC(node->data.stmtlist.next);
             break;
 
+        case NODE_ARRAY_DECL:
+            appendTAC(createTAC(TAC_DECL, NULL, NULL, node->data.array_decl.name));
+            break;
+
+        case NODE_ARRAY_ASSIGN: {
+            char* index = generateTACExpr(node->data.array_assign.index);
+            char* value = generateTACExpr(node->data.array_assign.value);
+            appendTAC(createTAC(TAC_ARRAY_ASSIGN, node->data.array_assign.name, index, value));
+            break;
+        }
+
         default:
             break;
     }
@@ -282,6 +305,17 @@ void printTAC() {
             case TAC_CALL: printf("%s = CALL %s (%d params)\n", curr->result, curr->arg1, curr->paramCount); break;
             case TAC_FUNC_BEGIN: printf("FUNC_BEGIN %s\n", curr->result); break;
             case TAC_FUNC_END: printf("FUNC_END %s\n", curr->result); break;
+            case TAC_ARRAY_ACCESS: printf("%s = %s[%s]\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_ARRAY_ASSIGN: printf("%s[%s] = %s\n", curr->arg1, curr->arg2, curr->result); break;
+            case TAC_ARRAY_DECL: printf("ARRAY_DECL %s\n", curr->result); break;
+            case TAC_LT: printf("%s = %s < %s\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_GT: printf("%s = %s > %s\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_LE: printf("%s = %s <= %s\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_GE: printf("%s = %s >= %s\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_EQ: printf("%s = %s == %s\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_NE: printf("%s = %s != %s\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_NEG: printf("%s = -%s\n", curr->result, curr->arg1); break;
+            case TAC_NOT: printf("%s = !%s\n", curr->result, curr->arg1); break;
             default: printf("(unknown)\n"); break;
         }
         curr = curr->next;
@@ -335,6 +369,17 @@ void printOptimizedTAC() {
                 case TAC_CALL: printf("%s = CALL %s (%d params)\n", curr->result, curr->arg1, curr->paramCount); break;
                 case TAC_FUNC_BEGIN: printf("FUNC_BEGIN %s\n", curr->result); break;
                 case TAC_FUNC_END: printf("FUNC_END %s\n", curr->result); break;
+                case TAC_ARRAY_ACCESS: printf("%s = %s[%s]\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_ARRAY_ASSIGN: printf("%s[%s] = %s\n", curr->arg1, curr->arg2, curr->result); break;
+                case TAC_ARRAY_DECL: printf("ARRAY_DECL %s\n", curr->result); break;
+                case TAC_LT: printf("%s = %s < %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_GT: printf("%s = %s > %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_LE: printf("%s = %s <= %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_GE: printf("%s = %s >= %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_EQ: printf("%s = %s == %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_NE: printf("%s = %s != %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_NEG: printf("%s = -%s\n", curr->result, curr->arg1); break;
+                case TAC_NOT: printf("%s = !%s\n", curr->result, curr->arg1); break;
                 default: printf("(unknown)\n"); break;
             }
         }

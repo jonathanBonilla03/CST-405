@@ -205,6 +205,14 @@ ASTNode* createRelop(RelopKind op, ASTNode* left, ASTNode* right) {
     return node;
 }
 
+ASTNode* createCast(char* targetType, ASTNode* expr) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_CAST;
+    node->data.cast.targetType = ast_strdup(targetType);
+    node->data.cast.expr = expr;
+    return node;
+}
+
 ASTNode* createIf(ASTNode* cond, ASTNode* thenBr, ASTNode* elseBr) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_IF;
@@ -263,11 +271,11 @@ ASTNode* createArgList(ASTNode* arg, ASTNode* next) {
     return node;
 }
 
-ASTNode* createFuncList(ASTNode* func, ASTNode* next) {
+ASTNode* createFuncList(ASTNode* existingList, ASTNode* newFunc) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_FUNC_LIST;
-    node->data.list.item = func;
-    node->data.list.next = next;
+    node->data.list.item = existingList; // The existing list/function becomes item
+    node->data.list.next = newFunc;      // The new function becomes next  
     return node;
 }
 
@@ -326,6 +334,10 @@ void printAST(ASTNode* node, int level) {
             printf(")\n");
             printAST(node->data.relop.left, level + 1);
             printAST(node->data.relop.right, level + 1);
+            break;
+        case NODE_CAST:
+            printf("CAST(%s)\n", node->data.cast.targetType);
+            printAST(node->data.cast.expr, level + 1);
             break;
         case NODE_DECL:
             printf("DECL(%s)\n", node->data.name);

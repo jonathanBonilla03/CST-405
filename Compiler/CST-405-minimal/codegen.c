@@ -13,6 +13,9 @@ int labelCount = 0;
 /* Track bytes of locals allocated in the current function */
 static int currentLocalBytes = 0;
 
+/* Forward declarations */
+void genFunctions(ASTNode* node);
+
 /* ============================================================
  * LABEL / TEMP HELPERS
  * ============================================================ */
@@ -104,10 +107,27 @@ static int genExpr(ASTNode* node) {
                 case BINOP_SUB: fprintf(output, "    sub $t%d, $t%d, $t%d\n", d, a, b); break;
                 case BINOP_MUL: fprintf(output, "    mul $t%d, $t%d, $t%d\n", d, a, b); break;
                 case BINOP_DIV:
-                    fprintf(output, "    div $t%d, $t%d\n", a, b);
-                    fprintf(output, "    mflo $t%d\n", d);
+                    // For float division, use floating-point instructions
+                    fprintf(output, "    mtc1 $t%d, $f0\n", a);  /* move to float reg */
+                    fprintf(output, "    mtc1 $t%d, $f2\n", b);  /* move to float reg */
+                    fprintf(output, "    cvt.s.w $f0, $f0\n");   /* convert to float */
+                    fprintf(output, "    cvt.s.w $f2, $f2\n");   /* convert to float */
+                    fprintf(output, "    div.s $f4, $f0, $f2\n"); /* float divide */
+                    fprintf(output, "    mfc1 $t%d, $f4\n", d);  /* move result back */
                     break;
-                case BINOP_AND: fprintf(output, "    and $t%d, $t%d, $t%d\n", d, a, b); break;
+                case BINOP_AND: {
+                    // Logical AND with short-circuit evaluation
+                    char* falseLbl = newLabel("Lfalse");
+                    char* endLbl = newLabel("Lend");
+                    fprintf(output, "    beqz $t%d, %s      # if first operand is 0, result is 0\n", a, falseLbl);
+                    fprintf(output, "    beqz $t%d, %s      # if second operand is 0, result is 0\n", b, falseLbl);
+                    fprintf(output, "    li $t%d, 1         # both true, result is 1\n", d);
+                    fprintf(output, "    j %s\n", endLbl);
+                    fprintf(output, "%s:\n", falseLbl);
+                    fprintf(output, "    li $t%d, 0         # result is 0\n", d);
+                    fprintf(output, "%s:\n", endLbl);
+                    break;
+                }
                 case BINOP_OR:  fprintf(output, "    or  $t%d, $t%d, $t%d\n", d, a, b); break;
                 case BINOP_MOD:
                     /* MIPS32: a % b -> div a,b ; mfhi d */
@@ -133,6 +153,39 @@ static int genExpr(ASTNode* node) {
 
         case NODE_RELOP:
             return genRelop(node);
+
+        case NODE_CAST: {
+            int srcReg = genExpr(node->data.cast.expr);
+            int destReg = getNextTemp();
+            
+            // For simplicity, just move the value (no actual type conversion for now)
+            // Real implementation would need float conversion instructions
+            fprintf(output, "    move $t%d, $t%d      # cast to %s\n", 
+                   destReg, srcReg, node->data.cast.targetType);
+            return destReg;
+        }
+
+        case NODE_ARRAY_ACCESS: {
+            // Generate the index expression
+            int indexReg = genExpr(node->data.array_access.index);
+            
+            // Get array base offset  
+            int arrayOffset = getVarOffset(node->data.array_access.name);
+            if (arrayOffset == -1) {
+                fprintf(stderr, "Array access to undeclared array: %s\n", node->data.array_access.name);
+                exit(1);
+            }
+            
+            // Calculate address and load value
+            int addrReg = getNextTemp();
+            int destReg = getNextTemp();
+            fprintf(output, "    sll $t%d, $t%d, 2    # multiply index by 4\n", addrReg, indexReg);
+            // Arrays are at negative offsets, so we subtract the scaled index from the base array address
+            fprintf(output, "    addi $t%d, $fp, %d   # get array base address\n", addrReg+1, arrayOffset);
+            fprintf(output, "    sub $t%d, $t%d, $t%d # subtract scaled index\n", addrReg, addrReg+1, addrReg);
+            fprintf(output, "    lw $t%d, 0($t%d)     # load from array[index]\n", destReg, addrReg);
+            return destReg;
+        }
 
         case NODE_FUNC_CALL: {
             /* Load args (up to 4) into $a0-$a3 from left to right */
@@ -180,6 +233,17 @@ static void genStmt(ASTNode* node) {
             break;
         }
 
+        case NODE_ARRAY_DECL: {
+            /* Add array to symtab and allocate size*4 bytes on stack */
+            int arraySize = node->data.array_decl.size;
+            int off = addArrayVar(node->data.array_decl.name, "int", arraySize);
+            (void)off; /* offset already used by lw/sw with $fp */
+            fprintf(output, "    addi $sp, $sp, -%d   # alloc array %s[%d]\n", 
+                   arraySize * 4, node->data.array_decl.name, arraySize);
+            currentLocalBytes += arraySize * 4;
+            break;
+        }
+
         case NODE_ASSIGN: {
             int r   = genExpr(node->data.assign.value);
             int off = getVarOffset(node->data.assign.var);
@@ -188,6 +252,28 @@ static void genStmt(ASTNode* node) {
                 exit(1);
             }
             fprintf(output, "    sw $t%d, %d($fp)\n", r, off);
+            break;
+        }
+
+        case NODE_ARRAY_ASSIGN: {
+            // Generate the value to store
+            int valueReg = genExpr(node->data.array_assign.value);
+            // Generate the index expression
+            int indexReg = genExpr(node->data.array_assign.index);
+            
+            // Get array base offset
+            int arrayOffset = getVarOffset(node->data.array_assign.name);
+            if (arrayOffset == -1) {
+                fprintf(stderr, "Array assignment to undeclared array: %s\n", node->data.array_assign.name);
+                exit(1);
+            }
+            
+            // Calculate address: base - (index * 4) for negative offset arrays
+            int addrReg = getNextTemp();
+            fprintf(output, "    sll $t%d, $t%d, 2    # multiply index by 4\n", addrReg, indexReg);
+            fprintf(output, "    addi $t%d, $fp, %d   # get array base address\n", addrReg+1, arrayOffset);
+            fprintf(output, "    sub $t%d, $t%d, $t%d # subtract scaled index\n", addrReg, addrReg+1, addrReg);
+            fprintf(output, "    sw $t%d, 0($t%d)     # store to array[index]\n", valueReg, addrReg);
             break;
         }
 
@@ -280,15 +366,30 @@ static void genFunc(ASTNode* func) {
     /* Body */
     genStmt(func->data.func_decl.body);
 
-    /* Default return for 'void' or missing explicit return: epilogue */
-    fprintf(output, "    addi $sp, $sp, %d\n", currentLocalBytes);
-    fprintf(output, "    move $sp, $fp\n");
-    fprintf(output, "    lw $ra, 4($sp)\n");
-    fprintf(output, "    lw $fp, 0($sp)\n");
-    fprintf(output, "    addi $sp, $sp, 8\n");
-    fprintf(output, "    jr $ra\n");
+    /* Note: epilogue is handled by explicit return statements */
 
     exitScope();
+}
+
+/* ============================================================
+ * RECURSIVE FUNCTION PROCESSING
+ * ============================================================ */
+// Recursive function to process function lists (like TAC does)
+void genFunctions(ASTNode* node) {
+    if (!node) return;
+    
+    if (node->type == NODE_FUNC_LIST) {
+        // Recursively process both item and next
+        genFunctions(node->data.list.item);
+        genFunctions(node->data.list.next);
+    } else if (node->type == NODE_FUNC_DECL) {
+        // Process individual function
+        if (node->data.func_decl.name) {
+            printf("Generating function: %s\n", node->data.func_decl.name);
+            genFunc(node);
+            printf("Finished function: %s\n", node->data.func_decl.name);
+        }
+    }
 }
 
 /* ============================================================
@@ -308,14 +409,15 @@ void generateMIPS(ASTNode* root, const char* filename) {
         return;
     }
 
+
+    
     if (root->type == NODE_FUNC_LIST) {
-        ASTNode* n = root;
-        while (n) {
-            if (n->data.list.item)
-                genFunc(n->data.list.item);
-            n = n->data.list.next;
-        }
+        // Use recursive approach like TAC generation
+        printf("Processing function list recursively...\n");
+        genFunctions(root);
+        printf("All functions processed.\n");
     } else if (root->type == NODE_FUNC_DECL) {
+        printf("DEBUG: Processing single function\n");
         genFunc(root);
     } else {
         /* Fallback: wrap statements in a synthetic main */

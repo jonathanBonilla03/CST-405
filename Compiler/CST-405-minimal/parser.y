@@ -42,7 +42,7 @@ ASTNode* root = NULL;
 %left LT LE GT GE
 %left '+' '-'
 %left '*' '/' '%'
-%right UMINUS
+%right UMINUS CAST
 
 %expect 1
 
@@ -117,6 +117,7 @@ decl:
       INT ID ';'                { $$ = createDecl($2); free($2); }
     | FLOAT ID ';'              { $$ = createDecl($2); free($2); }
     | INT ID '[' NUM ']' ';'    { $$ = createArrayDecl($2, $4); free($2); }
+    | FLOAT ID '[' NUM ']' ';'  { $$ = createArrayDecl($2, $4); free($2); }
     | BOOL ID ';'               { $$ = createDecl($2); free($2); }
     ;
 
@@ -147,6 +148,7 @@ expr:
     | ID                        { $$ = createVar($1); free($1); }
     | ID '[' expr ']'           { $$ = createArrayAccess($1, $3); free($1); }
     | '(' expr ')'              { $$ = $2; }
+    | '(' type ')' expr %prec CAST { $$ = createCast($2, $4); }
 
     /* Arithmetic */
     | expr '+' expr             { $$ = createBinOp(BINOP_ADD, $1, $3); }
