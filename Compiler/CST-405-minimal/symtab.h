@@ -57,6 +57,7 @@ int addArrayVar(char* name, char* type, int size); /* Add array variable */
 int addFunction(char* name, char* returnType,
                 char** paramTypes, int paramCount); /* Add function to global scope */
 int addParameter(char* name, char* type);          /* Add parameter to current scope */
+void adjustLocalOffsetAfterParams(int paramBytes); /* Adjust local offset after params */
 
 /* === Lookup Operations === */
 Symbol* lookupSymbol(char* name);     /* Search current + parent scopes */

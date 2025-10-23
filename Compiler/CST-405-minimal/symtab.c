@@ -30,7 +30,7 @@ void enterScope() {
     Scope* newScope = malloc(sizeof(Scope));
     newScope->count = 0;
     newScope->nextLocalOffset = -4;  /* Locals start below $fp */
-    newScope->nextParamOffset = 8;   /* First parameter at +8($fp) */
+    newScope->nextParamOffset = -4;   /* First parameter at -4($fp) */
     newScope->parent = symtab.currentScope;
 
     symtab.currentScope = newScope;
@@ -172,7 +172,7 @@ int addParameter(char* name, char* type) {
     sym->paramTypes = NULL;
 
     sym->offset = scope->nextParamOffset;
-    scope->nextParamOffset += 4;
+    scope->nextParamOffset -= 4;  /* Parameters go to lower addresses */
 
     printf("SYMBOL TABLE: Added parameter '%s' (%s) offset %d\n",
            name, type, sym->offset);
@@ -223,6 +223,12 @@ int isArrayVar(char* name) {
 int getArraySize(char* name) {
     Symbol* sym = lookupSymbol(name);
     return (sym && sym->isArray) ? sym->arraySize : -1;
+}
+
+/* === Adjust local offset after parameters are allocated === */
+void adjustLocalOffsetAfterParams(int paramBytes) {
+    Scope* scope = symtab.currentScope;
+    scope->nextLocalOffset = -(paramBytes + 4);  /* Start after params */
 }
 
 /* === Printing Functions === */
