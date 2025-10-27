@@ -65,6 +65,7 @@ whitespace  [ \t\r\n]+
 "]"         { return ']'; }
 "+"         { return '+'; }
 "-"         { return '-'; }
+"**"        { return EXPONENT; }
 "*"         { return '*'; }
 "/"         { return '/'; }
 "%"         { return '%'; }

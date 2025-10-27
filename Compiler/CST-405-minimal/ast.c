@@ -141,10 +141,20 @@ ASTNode* createUnaryOp(UnOpKind op, ASTNode* expr) {
     return node;
 }
 
-ASTNode* createDecl(char* name) {
+ASTNode* createDecl(char* type, char* name) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_DECL;
-    node->data.name = ast_strdup(name);
+    node->data.decl.type = ast_strdup(type);
+    node->data.decl.name = ast_strdup(name);
+    return node;
+}
+
+ASTNode* createDeclInit(char* type, char* name, ASTNode* value) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_DECL_INIT;
+    node->data.decl_init.type = ast_strdup(type);
+    node->data.decl_init.name = ast_strdup(name);
+    node->data.decl_init.value = value;
     return node;
 }
 
@@ -171,11 +181,30 @@ ASTNode* createStmtList(ASTNode* stmt1, ASTNode* stmt2) {
     return node;
 }
 
-ASTNode* createArrayDecl(char* name, int size) {
+ASTNode* createArrayDecl(char* type, char* name, int size) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_ARRAY_DECL;
+    node->data.array_decl.type = ast_strdup(type);
     node->data.array_decl.name = ast_strdup(name);
     node->data.array_decl.size = size;
+    return node;
+}
+
+ASTNode* createArrayInitDecl(char* type, char* name, int size, ASTNode* init_list) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_ARRAY_INIT_DECL;
+    node->data.array_init_decl.type = ast_strdup(type);
+    node->data.array_init_decl.name = ast_strdup(name);
+    node->data.array_init_decl.size = size;
+    node->data.array_init_decl.init_list = init_list;
+    return node;
+}
+
+ASTNode* createInitList(ASTNode* expr, ASTNode* next) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_INIT_LIST;
+    node->data.init_list.expr = expr;
+    node->data.init_list.next = next;
     return node;
 }
 
@@ -305,6 +334,7 @@ void printAST(ASTNode* node, int level) {
                 case BINOP_MUL: printf("*"); break;
                 case BINOP_DIV: printf("/"); break;
                 case BINOP_MOD: printf("%%"); break;
+                case BINOP_EXP: printf("**"); break;
                 case BINOP_AND: printf("&&"); break;
                 case BINOP_OR:  printf("||"); break;
             }
@@ -342,6 +372,10 @@ void printAST(ASTNode* node, int level) {
         case NODE_DECL:
             printf("DECL(%s)\n", node->data.name);
             break;
+        case NODE_DECL_INIT:
+            printf("DECL_INIT(%s)\n", node->data.decl_init.name);
+            printAST(node->data.decl_init.value, level + 1);
+            break;
         case NODE_ASSIGN:
             printf("ASSIGN(%s)\n", node->data.assign.var);
             printAST(node->data.assign.value, level + 1);
@@ -352,6 +386,17 @@ void printAST(ASTNode* node, int level) {
             break;
         case NODE_ARRAY_DECL:
             printf("ARRAY_DECL(%s[%d])\n", node->data.array_decl.name, node->data.array_decl.size);
+            break;
+        case NODE_ARRAY_INIT_DECL:
+            printf("ARRAY_INIT_DECL(%s[%d])\n", node->data.array_init_decl.name, node->data.array_init_decl.size);
+            printAST(node->data.array_init_decl.init_list, level + 1);
+            break;
+        case NODE_INIT_LIST:
+            printf("INIT_LIST\n");
+            printAST(node->data.init_list.expr, level + 1);
+            if (node->data.init_list.next) {
+                printAST(node->data.init_list.next, level);
+            }
             break;
         case NODE_ARRAY_ASSIGN:
             printf("ARRAY_ASSIGN(%s)\n", node->data.array_assign.name);

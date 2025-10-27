@@ -60,8 +60,9 @@
      AND = 276,
      OR = 277,
      NOT = 278,
-     CAST = 279,
-     UMINUS = 280
+     EXPONENT = 279,
+     CAST = 280,
+     UMINUS = 281
    };
 #endif
 
@@ -83,7 +84,7 @@ typedef union YYSTYPE
 
 
 /* Line 1676 of yacc.c  */
-#line 87 "parser.tab.h"
+#line 88 "parser.tab.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */

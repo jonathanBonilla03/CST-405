@@ -22,6 +22,7 @@ typedef enum {
     TAC_MUL,     
     TAC_DIV,     
     TAC_MOD,     
+    TAC_EXP,     
     TAC_ASSIGN,  
     TAC_PRINT,   
     TAC_DECL,     

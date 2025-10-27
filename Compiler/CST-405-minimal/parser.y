@@ -31,7 +31,7 @@ ASTNode* root = NULL;
 %token <boolean> BOOL_LITERAL
 %token INT FLOAT BOOL PRINT IF ELSE RETURN VOID
 %token EQ NE LE GE LT GT
-%token AND OR NOT
+%token AND OR NOT EXPONENT
 
 /* === Operator precedence === */
 %right '='
@@ -42,12 +42,13 @@ ASTNode* root = NULL;
 %left LT LE GT GE
 %left '+' '-'
 %left '*' '/' '%'
+%right EXPONENT
 %right UMINUS CAST
 
 %expect 1
 
 /* === Non-terminal types === */
-%type <node> program func_list stmt_list stmt decl assign expr print_stmt if_stmt block func_decl param_list param arg_list return_stmt
+%type <node> program func_list stmt_list stmt decl assign expr print_stmt if_stmt block func_decl param_list param arg_list return_stmt init_list
 %type <str> type
 
 %%
@@ -114,11 +115,15 @@ block:
 
 /* --- Declarations --- */
 decl:
-      INT ID ';'                { $$ = createDecl($2); free($2); }
-    | FLOAT ID ';'              { $$ = createDecl($2); free($2); }
-    | INT ID '[' NUM ']' ';'    { $$ = createArrayDecl($2, $4); free($2); }
-    | FLOAT ID '[' NUM ']' ';'  { $$ = createArrayDecl($2, $4); free($2); }
-    | BOOL ID ';'               { $$ = createDecl($2); free($2); }
+      INT ID ';'                { $$ = createDecl("int", $2); free($2); }
+    | FLOAT ID ';'              { $$ = createDecl("float", $2); free($2); }
+    | INT ID '=' expr ';'       { $$ = createDeclInit("int", $2, $4); free($2); }
+    | FLOAT ID '=' expr ';'     { $$ = createDeclInit("float", $2, $4); free($2); }
+    | INT ID '[' NUM ']' ';'    { $$ = createArrayDecl("int", $2, $4); free($2); }
+    | FLOAT ID '[' NUM ']' ';'  { $$ = createArrayDecl("float", $2, $4); free($2); }
+    | INT ID '[' NUM ']' '=' '{' init_list '}' ';'    { $$ = createArrayInitDecl("int", $2, $4, $8); free($2); }
+    | FLOAT ID '[' NUM ']' '=' '{' init_list '}' ';'  { $$ = createArrayInitDecl("float", $2, $4, $8); free($2); }
+    | BOOL ID ';'               { $$ = createDecl("bool", $2); free($2); }
     ;
 
 /* --- Assignments --- */
@@ -126,6 +131,12 @@ assign:
       ID '=' expr ';'           { $$ = createAssign($1, $3); free($1); }
     | ID '[' expr ']' '=' expr ';'
                                 { $$ = createArrayAssign($1, $3, $6); free($1); }
+    ;
+
+/* --- Initialization Lists --- */
+init_list:
+      expr                      { $$ = $1; }
+    | init_list ',' expr        { $$ = createInitList($1, $3); }
     ;
 
 /* --- If / Else statements --- */
@@ -156,6 +167,7 @@ expr:
     | expr '*' expr             { $$ = createBinOp(BINOP_MUL, $1, $3); }
     | expr '/' expr             { $$ = createBinOp(BINOP_DIV, $1, $3); }
     | expr '%' expr             { $$ = createBinOp(BINOP_MOD, $1, $3); }
+    | expr EXPONENT expr        { $$ = createBinOp(BINOP_EXP, $1, $3); }
 
     /* Logical */
     | expr AND expr             { $$ = createBinOp(BINOP_AND, $1, $3); }

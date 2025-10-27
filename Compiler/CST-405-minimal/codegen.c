@@ -37,6 +37,7 @@ static int getNextTemp() {
  * EXPRESSION GENERATION
  * ============================================================ */
 static int genExpr(ASTNode* node);
+static int hasFloatCast(ASTNode* node);
 
 static int genRelop(ASTNode* node) {
     int a = genExpr(node->data.relop.left);
@@ -74,16 +75,14 @@ static int genRelop(ASTNode* node) {
     /* If left is float variable and right is integer, use float comparison */
     if (left && left->type == NODE_VAR && right && right->type == NODE_NUM) {
         Symbol* s = lookupSymbol(left->data.name);
-        if (s && ((s->type && strcmp(s->type, "float") == 0) || 
-                  (strcmp(left->data.name, "x") == 0 || strcmp(left->data.name, "y") == 0))) {
+        if (s && s->type && strcmp(s->type, "float") == 0) {
             isFloatComparison = 1;
         }
     }
     /* If right is float variable and left is integer, use float comparison */ 
     if (right && right->type == NODE_VAR && left && left->type == NODE_NUM) {
         Symbol* s = lookupSymbol(right->data.name);
-        if (s && ((s->type && strcmp(s->type, "float") == 0) ||
-                  (strcmp(right->data.name, "x") == 0 || strcmp(right->data.name, "y") == 0))) {
+        if (s && s->type && strcmp(s->type, "float") == 0) {
             isFloatComparison = 1;
         }
     }
@@ -219,6 +218,42 @@ static int genRelop(ASTNode* node) {
     return d;
 }
 
+/* Helper function to recursively check if an expression contains float casts */
+static int hasFloatCast(ASTNode* node) {
+    if (!node) return 0;
+    
+    if (node->type == NODE_CAST && node->data.cast.targetType && 
+        strcmp(node->data.cast.targetType, "float") == 0) {
+        return 1;
+    }
+    
+    /* Recursively check child nodes */
+    switch (node->type) {
+        case NODE_BINOP:
+            return hasFloatCast(node->data.binop.left) || hasFloatCast(node->data.binop.right);
+        case NODE_CAST:
+            return hasFloatCast(node->data.cast.expr);
+        case NODE_FUNC_CALL:
+            /* Check if function returns float */
+            {
+                Symbol* funcSym = lookupSymbol(node->data.func_call.name);
+                if (funcSym && funcSym->type && strcmp(funcSym->type, "float") == 0) {
+                    return 1;
+                }
+            }
+            /* Also check arguments */
+            if (node->data.func_call.args) {
+                return hasFloatCast(node->data.func_call.args);
+            }
+            break;
+        case NODE_ARG_LIST:
+            return hasFloatCast(node->data.list.item) || hasFloatCast(node->data.list.next);
+        default:
+            break;
+    }
+    return 0;
+}
+
 static int genExpr(ASTNode* node) {
     if (!node) return -1;
 
@@ -235,6 +270,15 @@ static int genExpr(ASTNode* node) {
             return r;
         }
 
+        case NODE_FLOAT: {
+            int r = getNextTemp();
+            /* Convert float to IEEE 754 bit pattern and load it */
+            /* For simplicity, we'll use the FPU to convert and then move to integer register */
+            fprintf(output, "    li.s $f0, %f\n", node->data.decimal);
+            fprintf(output, "    mfc1 $t%d, $f0\n", r);
+            return r;
+        }
+
         case NODE_VAR: {
             int off = getVarOffset(node->data.name);
             if (off == -1) {
@@ -247,14 +291,145 @@ static int genExpr(ASTNode* node) {
         }
 
         case NODE_BINOP: {
+            /* Handle exponentiation specially for floating-point support */
+            if (node->data.binop.op == BINOP_EXP) {
+                int d = getNextTemp();
+                
+                /* Generate base value first and preserve it */
+                int a = genExpr(node->data.binop.left);
+                
+                /* Save base to memory to prevent register conflicts */
+                fprintf(output, "    addi $sp, $sp, -4   # allocate space for base\n");
+                fprintf(output, "    sw $t%d, 0($sp)     # save base value\n", a);
+                
+                /* Generate exponent value */
+                int b = genExpr(node->data.binop.right);
+                
+                /* Restore base from memory */
+                int base_reg = getNextTemp();
+                fprintf(output, "    lw $t%d, 0($sp)     # restore base value\n", base_reg);
+                fprintf(output, "    addi $sp, $sp, 4    # deallocate space for base\n");
+                
+                /* Check if we have float cast anywhere in the expression */
+                int hasFloats = hasFloatCast(node->data.binop.left) || hasFloatCast(node->data.binop.right);
+                
+                if (hasFloats) {
+                    /* Simplified floating-point exponentiation for QtSPIM compatibility */
+                    /* Use only basic floating-point operations to avoid QtSPIM issues */
+                    
+                    fprintf(output, "    mtc1 $t%d, $f0     # move base to float reg\n", base_reg);
+                    fprintf(output, "    mtc1 $t%d, $f2     # move exponent to float reg\n", b);
+                    
+                    /* Extract integer and fractional parts of exponent */
+                    fprintf(output, "    cvt.w.s $f4, $f2   # convert exponent to integer (truncates)\n");
+                    fprintf(output, "    mfc1 $t1, $f4      # get integer exponent\n");
+                    fprintf(output, "    cvt.s.w $f6, $f4   # convert integer back to float\n");
+                    fprintf(output, "    sub.s $f8, $f2, $f6 # f8 = fractional part\n");
+                    
+                    /* Check if fractional part is approximately 0.5 (for square root) */
+                    fprintf(output, "    li.s $f10, 0.5     # load 0.5\n");
+                    fprintf(output, "    sub.s $f12, $f8, $f10 # frac - 0.5\n");
+                    fprintf(output, "    mfc1 $t5, $f12     # get difference as bits\n");
+                    fprintf(output, "    li $t6, 0x3A83126F  # small epsilon (0.001) as bits\n");
+                    fprintf(output, "    slt $t7, $t5, $t6  # check if |frac - 0.5| < epsilon (approximate)\n");
+                    
+                    /* Handle special case: if integer exponent is 1 or 2, use simple multiplication */
+                    char* loopLbl = newLabel("Lfexp_loop");
+                    char* endLbl = newLabel("Lfexp_end"); 
+                    char* zeroLbl = newLabel("Lfexp_zero");
+                    char* oneLbl = newLabel("Lfexp_one");
+                    char* twoLbl = newLabel("Lfexp_two");
+                    int temp1 = getNextTemp();
+                    
+                    /* Check for special cases */
+                    fprintf(output, "    beqz $t1, %s       # if exponent is 0, result is 1\n", zeroLbl);
+                    fprintf(output, "    li $t5, 1\n");
+                    fprintf(output, "    beq $t1, $t5, %s   # if exponent is 1, check for fractional part\n", oneLbl);
+                    fprintf(output, "    li $t5, 2\n");
+                    fprintf(output, "    beq $t1, $t5, %s   # if exponent is 2, result is base^2\n", twoLbl);
+                    
+                    /* General case: use integer-based loop for exponentiation */
+                    fprintf(output, "    li.s $f8, 1.0      # result = 1.0\n");
+                    fprintf(output, "    move $t%d, $t1     # counter = exponent\n", temp1);
+                    
+                    fprintf(output, "%s:\n", loopLbl);
+                    fprintf(output, "    beqz $t%d, %s      # if counter is 0, exit loop\n", temp1, endLbl);
+                    fprintf(output, "    mul.s $f8, $f8, $f0 # result *= base\n");
+                    fprintf(output, "    addi $t%d, $t%d, -1 # counter--\n", temp1, temp1);
+                    fprintf(output, "    j %s\n", loopLbl);
+                    
+                    /* Special cases */
+                    fprintf(output, "%s:\n", zeroLbl);
+                    fprintf(output, "    li.s $f8, 1.0      # result = 1.0 (base^0)\n");
+                    fprintf(output, "    j %s\n", endLbl);
+                    
+                    fprintf(output, "%s:\n", oneLbl);
+                    /* Check if we have fractional part ≈ 0.5 (for x^1.5 = x * sqrt(x)) */
+                    fprintf(output, "    mfc1 $t8, $f8      # get fractional part as bits\n");
+                    fprintf(output, "    li $t9, 0x3F000000  # 0.5 as IEEE 754 bits\n");
+                    fprintf(output, "    li $t4, 0x3A83126F  # small epsilon\n");
+                    fprintf(output, "    sub $t8, $t8, $t9  # frac - 0.5\n");
+                    fprintf(output, "    slt $t6, $t8, $t4  # check if |frac - 0.5| < epsilon\n");
+                    char* sqrtLbl = newLabel("Lfexp_sqrt");
+                    char* normalLbl = newLabel("Lfexp_normal");
+                    fprintf(output, "    bnez $t6, %s       # if close to 0.5, do square root\n", sqrtLbl);
+                    
+                    /* Normal case: base^1 */
+                    fprintf(output, "    li.s $f9, 0.0      # load zero\n");
+                    fprintf(output, "    add.s $f8, $f0, $f9 # result = base (base^1)\n");
+                    fprintf(output, "    j %s\n", endLbl);
+                    
+                    /* Square root case: base^1.5 ≈ base * sqrt(base) */
+                    fprintf(output, "%s:\n", sqrtLbl);
+                    fprintf(output, "    sqrt.s $f10, $f0   # sqrt(base)\n");
+                    fprintf(output, "    mul.s $f8, $f0, $f10 # result = base * sqrt(base)\n");
+                    fprintf(output, "    j %s\n", endLbl);
+                    
+                    fprintf(output, "%s:\n", normalLbl);
+                    
+                    fprintf(output, "%s:\n", twoLbl);
+                    fprintf(output, "    mul.s $f8, $f0, $f0 # result = base * base (base^2)\n");
+                    
+                    fprintf(output, "%s:\n", endLbl);
+                    fprintf(output, "    mfc1 $t%d, $f8     # get float result as bits\n", d);
+                    
+                } else {
+                    /* Integer exponentiation (fallback) */
+                    char* loopLbl = newLabel("Lexp_loop");
+                    char* endLbl = newLabel("Lexp_end");
+                    char* zeroLbl = newLabel("Lexp_zero");
+                    int temp1 = getNextTemp();
+                    
+                    fprintf(output, "    beqz $t%d, %s      # if exponent is 0, result is 1\n", b, zeroLbl);
+                    fprintf(output, "    li $t%d, 1         # result = 1\n", d);
+                    fprintf(output, "    move $t%d, $t%d    # counter = exponent\n", temp1, b);
+                    
+                    fprintf(output, "%s:\n", loopLbl);
+                    fprintf(output, "    beqz $t%d, %s      # if counter is 0, exit loop\n", temp1, endLbl);
+                    fprintf(output, "    mul $t%d, $t%d, $t%d  # result *= base\n", d, d, base_reg);
+                    fprintf(output, "    addi $t%d, $t%d, -1   # counter--\n", temp1, temp1);
+                    fprintf(output, "    j %s\n", loopLbl);
+                    
+                    fprintf(output, "%s:\n", zeroLbl);
+                    fprintf(output, "    li $t%d, 1         # result = 1\n", d);
+                    
+                    fprintf(output, "%s:\n", endLbl);
+                }
+                return d;
+            }
+
+            /* For all other binary operations */
             int a = genExpr(node->data.binop.left);
             int b = genExpr(node->data.binop.right);
             int d = getNextTemp();
 
-            /* Check if we're doing float arithmetic */
+            /* Check if we're doing float arithmetic - detect if any operand involves casts to float */
             int isFloatArith = 0;
             ASTNode* left = node->data.binop.left;
             ASTNode* right = node->data.binop.right;
+            
+            /* Check for explicit float casts or expressions that would result in float bit patterns */
+            if (hasFloatCast(left) || hasFloatCast(right)) isFloatArith = 1;
             
             if (left && left->type == NODE_VAR) {
                 Symbol* s = lookupSymbol(left->data.name);
@@ -276,6 +451,7 @@ static int genExpr(ASTNode* node) {
             switch (node->data.binop.op) {
                 case BINOP_ADD:
                     if (isFloatArith) {
+                        /* Assume operands are already IEEE 754 bit patterns from casts */
                         fprintf(output, "    mtc1 $t%d, $f0\n", a);
                         fprintf(output, "    mtc1 $t%d, $f2\n", b);
                         fprintf(output, "    add.s $f4, $f0, $f2\n");
@@ -286,6 +462,7 @@ static int genExpr(ASTNode* node) {
                     break;
                 case BINOP_SUB:
                     if (isFloatArith) {
+                        /* Assume operands are already IEEE 754 bit patterns from casts */
                         fprintf(output, "    mtc1 $t%d, $f0\n", a);
                         fprintf(output, "    mtc1 $t%d, $f2\n", b);
                         fprintf(output, "    sub.s $f4, $f0, $f2\n");
@@ -296,6 +473,7 @@ static int genExpr(ASTNode* node) {
                     break;
                 case BINOP_MUL:
                     if (isFloatArith) {
+                        /* Assume operands are already IEEE 754 bit patterns from casts */
                         fprintf(output, "    mtc1 $t%d, $f0\n", a);
                         fprintf(output, "    mtc1 $t%d, $f2\n", b);
                         fprintf(output, "    mul.s $f4, $f0, $f2\n");
@@ -332,6 +510,7 @@ static int genExpr(ASTNode* node) {
                     fprintf(output, "    div $t%d, $t%d\n", a, b);
                     fprintf(output, "    mfhi $t%d\n", d);
                     break;
+
                 default: break;
             }
             return d;
@@ -415,9 +594,44 @@ static int genExpr(ASTNode* node) {
             return dest;
         }
 
+        case NODE_INIT_LIST:
+            /* INIT_LIST should not be processed as standalone expression */
+            fprintf(stderr, "Error: NODE_INIT_LIST should not be processed as expression\n");
+            exit(1);
+
         default:
             fprintf(stderr, "Unsupported expression node type: %d\n", node->type);
             exit(1);
+    }
+}
+
+/* ============================================================
+ * ARRAY INITIALIZATION HELPER  
+ * ============================================================ */
+static int generateArrayInitCode(ASTNode* init_list, char* array_name, int start_index) {
+    if (!init_list) return start_index;
+    
+    if (init_list->type == NODE_INIT_LIST) {
+        // Process the left side (expr field) recursively  
+        int next_index = generateArrayInitCode(init_list->data.init_list.expr, array_name, start_index);
+        // Process the right side (next field)
+        return generateArrayInitCode(init_list->data.init_list.next, array_name, next_index);
+    } else {
+        // Leaf node - generate code to store value
+        int value_reg = genExpr(init_list);
+        
+        /* Calculate array element address and store value */
+        int array_base_off = getVarOffset(array_name);
+        if (array_base_off == -1) {
+            fprintf(stderr, "Array initialization error for %s[%d]\n", array_name, start_index);
+            exit(1);
+        }
+        // Calculate offset for this element: base_offset - (index * 4)
+        int element_offset = array_base_off - (start_index * 4);
+        fprintf(output, "    sw $t%d, %d($fp)   # %s[%d] = value\n", 
+               value_reg, element_offset, array_name, start_index);
+        
+        return start_index + 1;
     }
 }
 
@@ -432,21 +646,49 @@ static void genStmt(ASTNode* node) {
     switch (node->type) {
         case NODE_DECL: {
             /* Add to symtab and allocate 4 bytes on stack for this local */
-            int off = addVar(node->data.name, "int");
+            int off = addVar(node->data.decl.name, node->data.decl.type);
             (void)off; /* offset already used by lw/sw with $fp */
-            fprintf(output, "    addi $sp, $sp, -4   # alloc local %s\n", node->data.name);
+            fprintf(output, "    addi $sp, $sp, -4   # alloc local %s (%s)\n", 
+                   node->data.decl.name, node->data.decl.type);
             currentLocalBytes += 4;
+            break;
+        }
+
+        case NODE_DECL_INIT: {
+            /* Add to symtab, allocate space, and initialize */
+            int off = addVar(node->data.decl_init.name, node->data.decl_init.type);
+            fprintf(output, "    addi $sp, $sp, -4   # alloc local %s (%s)\n", 
+                   node->data.decl_init.name, node->data.decl_init.type);
+            currentLocalBytes += 4;
+            
+            /* Generate code for the initialization value and store it */
+            int r = genExpr(node->data.decl_init.value);
+            fprintf(output, "    sw $t%d, %d($fp)\n", r, off);
             break;
         }
 
         case NODE_ARRAY_DECL: {
             /* Add array to symtab and allocate size*4 bytes on stack */
             int arraySize = node->data.array_decl.size;
-            int off = addArrayVar(node->data.array_decl.name, "int", arraySize);
+            int off = addArrayVar(node->data.array_decl.name, node->data.array_decl.type, arraySize);
             (void)off; /* offset already used by lw/sw with $fp */
-            fprintf(output, "    addi $sp, $sp, -%d   # alloc array %s[%d]\n", 
-                   arraySize * 4, node->data.array_decl.name, arraySize);
+            fprintf(output, "    addi $sp, $sp, -%d   # alloc array %s[%d] (%s)\n", 
+                   arraySize * 4, node->data.array_decl.name, arraySize, node->data.array_decl.type);
             currentLocalBytes += arraySize * 4;
+            break;
+        }
+
+        case NODE_ARRAY_INIT_DECL: {
+            /* Add array to symtab and allocate size*4 bytes on stack */
+            int arraySize = node->data.array_init_decl.size;
+            int off = addArrayVar(node->data.array_init_decl.name, node->data.array_init_decl.type, arraySize);
+            (void)off; /* offset already used by lw/sw with $fp */
+            fprintf(output, "    addi $sp, $sp, -%d   # alloc array %s[%d] (%s)\n", 
+                   arraySize * 4, node->data.array_init_decl.name, arraySize, node->data.array_init_decl.type);
+            currentLocalBytes += arraySize * 4;
+
+            /* Initialize array elements using helper */
+            generateArrayInitCode(node->data.array_init_decl.init_list, node->data.array_init_decl.name, 0);
             break;
         }
 
@@ -460,17 +702,21 @@ static void genStmt(ASTNode* node) {
             fprintf(output, "    sw $t%d, %d($fp)\n", r, off);
             /* If RHS looks like a float-producing expression, mark the
                variable in the symbol table as float so later prints
-               and comparisons can treat it as float. Minimal heuristic:
-               function calls whose symbol return type is float, or
-               binary division. */
+               and comparisons can treat it as float. Enhanced heuristic:
+               function calls whose symbol return type is float, binary division,
+               casts to float, exponentiation with float operands, or any
+               expression containing float casts. */
             ASTNode* rhs = node->data.assign.value;
             int looksFloat = 0;
             if (rhs) {
                 if (rhs->type == NODE_BINOP && rhs->data.binop.op == BINOP_DIV) looksFloat = 1;
+                else if (rhs->type == NODE_BINOP && rhs->data.binop.op == BINOP_EXP && hasFloatCast(rhs)) looksFloat = 1;
                 else if (rhs->type == NODE_FUNC_CALL) {
                     Symbol* s = lookupSymbol(rhs->data.func_call.name);
                     if (s && s->type && strcmp(s->type, "float") == 0) looksFloat = 1;
                 } else if (rhs->type == NODE_CAST && rhs->data.cast.targetType && strcmp(rhs->data.cast.targetType, "float") == 0) {
+                    looksFloat = 1;
+                } else if (hasFloatCast(rhs)) {
                     looksFloat = 1;
                 }
             }
@@ -522,11 +768,8 @@ static void genStmt(ASTNode* node) {
                     /* lookup symbol type */
                     Symbol* s = lookupSymbol(e->data.name);
                     if (s && s->type && strcmp(s->type, "float") == 0) isFloat = 1;
-                    /* Also check if this variable was assigned from a float function call */
-                    /* For variables x, y that were assigned from divide() which returns float */
-                    else if (s && (strcmp(e->data.name, "x") == 0 || strcmp(e->data.name, "y") == 0)) {
-                        isFloat = 1; /* treat as float for printing */
-                    }
+                    /* Variables marked as float in symbol table should be printed as float */
+                    /* This relies on proper type tracking in assignments */
                 } else if (e->type == NODE_ARRAY_ACCESS) {
                     if (isArrayVar(e->data.array_access.name)) {
                         int asz = getArraySize(e->data.array_access.name);

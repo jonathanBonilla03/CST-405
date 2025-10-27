@@ -131,6 +131,7 @@ char* generateTACExpr(ASTNode* node) {
                 case BINOP_MUL: appendTAC(createTAC(TAC_MUL, left, right, temp)); break;
                 case BINOP_DIV: appendTAC(createTAC(TAC_DIV, left, right, temp)); break;
                 case BINOP_MOD: appendTAC(createTAC(TAC_MOD, left, right, temp)); break;
+                case BINOP_EXP: appendTAC(createTAC(TAC_EXP, left, right, temp)); break;
                 case BINOP_AND: appendTAC(createTAC(TAC_AND, left, right, temp)); break;
                 case BINOP_OR:  appendTAC(createTAC(TAC_OR, left, right, temp)); break;
                 default: break;
@@ -192,6 +193,25 @@ char* generateTACExpr(ASTNode* node) {
     }
 }
 
+/* === Array initialization helper === */
+static int generateArrayInitTAC(ASTNode* init_list, char* array_name, int start_index) {
+    if (!init_list) return start_index;
+    
+    if (init_list->type == NODE_INIT_LIST) {
+        // Process the left side (expr field) recursively  
+        int next_index = generateArrayInitTAC(init_list->data.init_list.expr, array_name, start_index);
+        // Process the right side (next field)
+        return generateArrayInitTAC(init_list->data.init_list.next, array_name, next_index);
+    } else {
+        // Leaf node - generate assignment
+        char* val = generateTACExpr(init_list);
+        char indexStr[16];
+        snprintf(indexStr, sizeof(indexStr), "%d", start_index);
+        appendTAC(createTAC(TAC_ARRAY_ASSIGN, array_name, indexStr, val));
+        return start_index + 1;
+    }
+}
+
 /* === Top-level TAC generation (statements) === */
 void generateTAC(ASTNode* node) {
     if (!node) return;
@@ -200,6 +220,20 @@ void generateTAC(ASTNode* node) {
         case NODE_DECL:
             appendTAC(createTAC(TAC_DECL, NULL, NULL, node->data.name));
             break;
+
+        case NODE_DECL_INIT: {
+            appendTAC(createTAC(TAC_DECL, NULL, NULL, node->data.decl_init.name));
+            char* expr = generateTACExpr(node->data.decl_init.value);
+            appendTAC(createTAC(TAC_ASSIGN, expr, NULL, node->data.decl_init.name));
+            break;
+        }
+
+        case NODE_ARRAY_INIT_DECL: {
+            appendTAC(createTAC(TAC_DECL, NULL, NULL, node->data.array_init_decl.name));
+            // Generate TAC for each initialization value using recursive helper
+            generateArrayInitTAC(node->data.array_init_decl.init_list, node->data.array_init_decl.name, 0);
+            break;
+        }
 
         case NODE_ASSIGN: {
             char* expr = generateTACExpr(node->data.assign.value);
@@ -294,6 +328,7 @@ void printTAC() {
             case TAC_MUL: printf("%s = %s * %s\n", curr->result, curr->arg1, curr->arg2); break;
             case TAC_DIV: printf("%s = %s / %s\n", curr->result, curr->arg1, curr->arg2); break;
             case TAC_MOD: printf("%s = %s %% %s\n", curr->result, curr->arg1, curr->arg2); break;
+            case TAC_EXP: printf("%s = %s ** %s\n", curr->result, curr->arg1, curr->arg2); break;
             case TAC_AND: printf("%s = %s && %s\n", curr->result, curr->arg1, curr->arg2); break;
             case TAC_OR:  printf("%s = %s || %s\n", curr->result, curr->arg1, curr->arg2); break;
             case TAC_PRINT: printf("PRINT %s\n", curr->arg1); break;

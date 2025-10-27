@@ -33,6 +33,7 @@ typedef enum {
     BINOP_MUL,   // *
     BINOP_DIV,   // /
     BINOP_MOD,   // %
+    BINOP_EXP,   // ** (exponentiation)
     BINOP_AND,   // &&
     BINOP_OR     // ||
 } BinOpKind;
@@ -70,12 +71,15 @@ typedef enum {
     NODE_BINOP,
     NODE_UNOP,
     NODE_DECL,
+    NODE_DECL_INIT,
     NODE_ASSIGN,
     NODE_PRINT,
     NODE_STMT_LIST,
     NODE_ARRAY_DECL,
+    NODE_ARRAY_INIT_DECL,
     NODE_ARRAY_ASSIGN,
     NODE_ARRAY_ACCESS,
+    NODE_INIT_LIST,
     NODE_RELOP,
     NODE_CAST,
     NODE_IF,
@@ -107,14 +111,18 @@ typedef struct ASTNode {
 
         // --- Statements ---
         struct { char* var; struct ASTNode* value; } assign;
+        struct { char* type; char* name; } decl;
+        struct { char* type; char* name; struct ASTNode* value; } decl_init;
         struct ASTNode* expr;  // For print
         struct { struct ASTNode* stmt; struct ASTNode* next; } stmtlist;
         struct { struct ASTNode* cond; struct ASTNode* thenBr; struct ASTNode* elseBr; } ifstmt;
 
         // --- Arrays ---
-        struct { char* name; int size; } array_decl;
+        struct { char* type; char* name; int size; } array_decl;
+        struct { char* type; char* name; int size; struct ASTNode* init_list; } array_init_decl;
         struct { char* name; struct ASTNode* index; struct ASTNode* value; } array_assign;
         struct { char* name; struct ASTNode* index; } array_access;
+        struct { struct ASTNode* expr; struct ASTNode* next; } init_list;
         // Function declaration
         struct {
             char* returnType;        // "int" or "void"
@@ -154,13 +162,16 @@ ASTNode* createVar(char* name);
 ASTNode* createBool(bool value);
 ASTNode* createBinOp(BinOpKind op, ASTNode* left, ASTNode* right);
 ASTNode* createUnaryOp(UnOpKind op, ASTNode* expr);
-ASTNode* createDecl(char* name);
+ASTNode* createDecl(char* type, char* name);
+ASTNode* createDeclInit(char* type, char* name, ASTNode* value);
 ASTNode* createAssign(char* var, ASTNode* value);
 ASTNode* createPrint(ASTNode* expr);
 ASTNode* createStmtList(ASTNode* stmt1, ASTNode* stmt2);
-ASTNode* createArrayDecl(char* name, int size);
+ASTNode* createArrayDecl(char* type, char* name, int size);
+ASTNode* createArrayInitDecl(char* type, char* name, int size, ASTNode* init_list);
 ASTNode* createArrayAssign(char* name, ASTNode* index, ASTNode* value);
 ASTNode* createArrayAccess(char* name, ASTNode* index);
+ASTNode* createInitList(ASTNode* expr, ASTNode* next);
 ASTNode* createRelop(RelopKind op, ASTNode* left, ASTNode* right);
 ASTNode* createCast(char* targetType, ASTNode* expr);
 ASTNode* createIf(ASTNode* cond, ASTNode* thenBr, ASTNode* elseBr);
