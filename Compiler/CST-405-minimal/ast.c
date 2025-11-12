@@ -124,6 +124,13 @@ ASTNode* createBool(bool value) {
     return node;
 }
 
+ASTNode* createChar(char value) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_CHAR;
+    node->data.character = value;
+    return node;
+}
+
 ASTNode* createString(char* value) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_STRING;
@@ -265,6 +272,22 @@ ASTNode* createReturn(ASTNode* expr) {
     return node;
 }
 
+ASTNode* createBreak() {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_BREAK;
+    return node;
+}
+
+ASTNode* createRetry(int attempts, int backoff, ASTNode* body, ASTNode* onfail) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_RETRY;
+    node->data.retry.attempts = attempts;
+    node->data.retry.backoff = backoff;
+    node->data.retry.body = body;
+    node->data.retry.onfail = onfail;
+    return node;
+}
+
 ASTNode* createFuncDecl(char* returnType, char* name, ASTNode* params, ASTNode* body) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_FUNC_DECL;
@@ -342,6 +365,9 @@ void printAST(ASTNode* node, int level) {
             break;
         case NODE_BOOL:
             printf("BOOL(%s)\n", node->data.boolean ? "true" : "false");
+            break;
+        case NODE_CHAR:
+            printf("CHAR('%c')\n", node->data.character);
             break;
         case NODE_STRING:
             printf("STRING(\"%s\")\n", node->data.string);
@@ -491,6 +517,21 @@ void printAST(ASTNode* node, int level) {
             /* block uses stmt_list representation in parser; print it */
             printAST(node->data.stmtlist.stmt, level + 1);
             printAST(node->data.stmtlist.next, level + 1);
+            break;
+        case NODE_RETRY:
+            printf("RETRY(attempts=%d, backoff=%d)\n", 
+                   node->data.retry.attempts, node->data.retry.backoff);
+            for (int i = 0; i < level + 1; i++) printf("  ");
+            printf("BODY:\n");
+            printAST(node->data.retry.body, level + 2);
+            if (node->data.retry.onfail) {
+                for (int i = 0; i < level + 1; i++) printf("  ");
+                printf("ONFAIL:\n");
+                printAST(node->data.retry.onfail, level + 2);
+            }
+            break;
+        case NODE_BREAK:
+            printf("BREAK\n");
             break;
         default:
             printf("UNKNOWN NODE TYPE %d\n", node->type);

@@ -1,0 +1,162 @@
+// Enhanced Retry Loop Demonstration with Built-in Delays
+// Showcases retry functionality with break statement support
+// Features 5-second delays using built-in backoff parameter
+
+int main() {
+    print("=== C-Minus Retry Loop Demonstration ===");
+    print("Note: Each attempt includes a 5-second backoff delay");
+    print("");
+    
+    // ========================================
+    // Demo 1: Retry with Success Detection
+    // ========================================
+    print("=== Demo 1: Retry with Success Detection ===");
+    print("Simulating network connection attempts...");
+    print("");
+    
+    int connection_status;
+    int attempt;
+    connection_status = 0;  // 0 = failed, 1 = success
+    attempt = 0;
+    
+    retry(5, backoff = 5000) {  // 5-second backoff between attempts
+        attempt = attempt + 1;
+        print(">>> Attempting connection - Try #");
+        print(attempt);
+        print("    Connecting to server...");
+        
+        // Simulate: succeed on 3rd attempt  
+        if (attempt >= 3) {
+            connection_status = 1;
+            print("    SUCCESS: Connection established!");
+            print("    Breaking out of retry loop...");
+            break;  // Early exit on success - demonstrates break functionality
+        } else {
+            print("    FAILED: Connection refused");
+            print("    Waiting 5 seconds before retry...");
+            print("");
+        }
+    } onfail {
+        print("ERROR: All connection attempts exhausted");
+        print("CRITICAL: Unable to establish connection");
+    }
+    
+    print("");
+    print("--- Demo 1 Results ---");
+    print("Final connection status:");
+    print(connection_status);
+    print("Total attempts made:");
+    print(attempt);
+    print("========================");
+    print("");
+    
+    // ========================================
+    // Demo 2: Retry with Guaranteed Failure
+    // ========================================
+    print("=== Demo 2: Retry with Guaranteed Failure ===");
+    print("Simulating service calls that always fail...");
+    print("");
+    
+    int service_status;
+    int tries;
+    service_status = 0;
+    tries = 0;
+    
+    retry(3, backoff = 5000) {  // 5-second backoff between attempts
+        tries = tries + 1;
+        print(">>> Calling remote service - Try #");
+        print(tries);
+        print("    Contacting API endpoint...");
+        
+        print("    FAILED: Service unavailable (500 error)");
+        if (tries < 3) {
+            print("    Waiting 5 seconds before retry...");
+            print("");
+        }
+        // Never break - demonstrates onfail behavior
+    } onfail {
+        print("    ERROR: Service permanently unavailable");
+        print("    RECOVERY: Switching to backup service");
+    }
+    
+    print("");
+    print("--- Demo 2 Results ---");
+    print("Service attempts made:");
+    print(tries);
+    print("========================");
+    print("");
+    
+    print("=== All Demonstrations Complete ===");
+    print("Both demos show retry loops with 5-second backoff delays");
+    return 0;
+}
+
+/*
+EXPECTED OUTPUT WITH 5-SECOND BACKOFF DELAYS:
+
+=== C-Minus Retry Loop Demonstration ===
+Note: Each attempt includes a 5-second backoff delay
+
+=== Demo 1: Retry with Success Detection ===
+Simulating network connection attempts...
+
+>>> Attempting connection - Try #
+1
+    Connecting to server...
+    FAILED: Connection refused
+    Waiting 5 seconds before retry...
+[5-second backoff delay automatically applied]
+
+>>> Attempting connection - Try #
+2
+    Connecting to server...
+    FAILED: Connection refused
+    Waiting 5 seconds before retry...
+[5-second backoff delay automatically applied]
+
+>>> Attempting connection - Try #
+3
+    Connecting to server...
+    SUCCESS: Connection established!
+    Breaking out of retry loop...
+
+--- Demo 1 Results ---
+Final connection status:
+1
+Total attempts made:
+3
+========================
+
+=== Demo 2: Retry with Guaranteed Failure ===
+Simulating service calls that always fail...
+
+>>> Calling remote service - Try #
+1
+    Contacting API endpoint...
+    FAILED: Service unavailable (500 error)
+    Waiting 5 seconds before retry...
+[5-second backoff delay automatically applied]
+
+>>> Calling remote service - Try #
+2
+    Contacting API endpoint...
+    FAILED: Service unavailable (500 error)
+    Waiting 5 seconds before retry...
+[5-second backoff delay automatically applied]
+
+>>> Calling remote service - Try #
+3
+    Contacting API endpoint...
+    FAILED: Service unavailable (500 error)
+    ERROR: Service permanently unavailable
+    RECOVERY: Switching to backup service
+
+--- Demo 2 Results ---
+Service attempts made:
+3
+========================
+
+=== All Demonstrations Complete ===
+Both demos show retry loops with 5-second backoff delays
+
+*/

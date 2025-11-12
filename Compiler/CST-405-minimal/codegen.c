@@ -14,6 +14,85 @@ int labelCount = 0;
 static int currentLocalBytes = 0;
 static int currentParamBytes = 0;
 
+/* Track current retry context for break statements */
+static char* current_retry_end_label = NULL;
+
+/* Helper function to process escape sequences in raw strings */
+char* process_escape_sequences(const char* str) {
+    if (!str) return NULL;
+    
+    size_t len = strlen(str);
+    char* result = malloc(len + 1);  /* Allocate enough space */
+    if (!result) return NULL;
+    
+    int i = 0, j = 0;
+    
+    while (i < len) {
+        if (str[i] == '\\' && i + 1 < len) {
+            switch (str[i + 1]) {
+                case 'n': result[j++] = '\n'; break;
+                case 't': result[j++] = '\t'; break;
+                case 'r': result[j++] = '\r'; break;
+                case '\\': result[j++] = '\\'; break;
+                case '"': result[j++] = '"'; break;
+                case '0': result[j++] = '\0'; break;
+                default: 
+                    /* Unknown escape - keep both characters */
+                    result[j++] = str[i];
+                    result[j++] = str[i + 1];
+                    break;
+            }
+            i += 2;
+        } else {
+            result[j++] = str[i++];
+        }
+    }
+    result[j] = '\0';
+    return result;
+}
+
+/* Helper function to escape string for MIPS assembly */
+char* escape_string_for_mips(const char* str) {
+    if (!str) return NULL;
+    
+    size_t len = strlen(str);
+    char* result = malloc(len * 2 + 1);  /* Worst case: every char needs escaping */
+    if (!result) return NULL;
+    
+    int i = 0, j = 0;
+    
+    while (i < len) {
+        switch (str[i]) {
+            case '\n': 
+                result[j++] = '\\'; 
+                result[j++] = 'n'; 
+                break;
+            case '\t': 
+                result[j++] = '\\'; 
+                result[j++] = 't'; 
+                break;
+            case '\r': 
+                result[j++] = '\\'; 
+                result[j++] = 'r'; 
+                break;
+            case '\\': 
+                result[j++] = '\\'; 
+                result[j++] = '\\'; 
+                break;
+            case '"': 
+                result[j++] = '\\'; 
+                result[j++] = '"'; 
+                break;
+            default:
+                result[j++] = str[i];
+                break;
+        }
+        i++;
+    }
+    result[j] = '\0';
+    return result;
+}
+
 /* Forward declarations */
 void genFunctions(ASTNode* node);
 
@@ -301,6 +380,12 @@ static int genExpr(ASTNode* node) {
             return r;
         }
 
+        case NODE_CHAR: {
+            int r = getNextTemp();
+            fprintf(output, "    li $t%d, %d\n", r, (int)node->data.character);
+            return r;
+        }
+
         case NODE_FLOAT: {
             int r = getNextTemp();
             /* Convert float to IEEE 754 bit pattern and load it */
@@ -318,7 +403,14 @@ static int genExpr(ASTNode* node) {
             
             /* Generate a unique label for this string */
             fprintf(output, "    .data\n");
-            fprintf(output, "string_%d: .asciiz \"%s\"\n", string_counter, node->data.string);
+            
+            /* Process escape sequences from raw string, then escape for MIPS */
+            char* processed = process_escape_sequences(node->data.string);
+            char* escaped = escape_string_for_mips(processed);
+            fprintf(output, "string_%d: .asciiz \"%s\"\n", string_counter, escaped);
+            free(processed);
+            free(escaped);
+            
             fprintf(output, "    .text\n");
             fprintf(output, "    la $t%d, string_%d\n", r, string_counter);
             string_counter++;
@@ -672,6 +764,81 @@ static int genExpr(ASTNode* node) {
                 return dest;
             }
             
+            /* Type conversion functions */
+            else if (strcmp(node->data.func_call.name, "charToString") == 0) {
+                /* charToString(char) - convert character to single-character string */
+                if (node->data.func_call.args && node->data.func_call.args->data.list.item) {
+                    int charReg = genExpr(node->data.func_call.args->data.list.item);
+                    int dest = getNextTemp();
+                    static int charstr_counter = 0;
+                    
+                    /* Create a temporary 2-char buffer in data section */
+                    fprintf(output, "    .data\n");
+                    fprintf(output, "charstr_%d: .space 2    # space for char + null terminator\n", charstr_counter);
+                    fprintf(output, "    .text\n");
+                    
+                    /* Store the character and null terminator */
+                    fprintf(output, "    la $t%d, charstr_%d\n", dest, charstr_counter);
+                    fprintf(output, "    sb $t%d, 0($t%d)      # store character\n", charReg, dest);
+                    fprintf(output, "    li $t%d, 0\n", getNextTemp());
+                    fprintf(output, "    sb $t%d, 1($t%d)      # store null terminator\n", getNextTemp()-1, dest);
+                    
+                    charstr_counter++;
+                    return dest;
+                }
+                int dest = getNextTemp();
+                fprintf(output, "    li $t%d, 0     # charToString error (0)\n", dest);
+                return dest;
+            }
+            else if (strcmp(node->data.func_call.name, "intToString") == 0) {
+                /* intToString(int) - convert integer to string representation */
+                /* This is a simplified implementation - real implementation would be more complex */
+                if (node->data.func_call.args && node->data.func_call.args->data.list.item) {
+                    int intReg = genExpr(node->data.func_call.args->data.list.item);
+                    int dest = getNextTemp();
+                    static int intstr_counter = 0;
+                    
+                    /* Create a temporary buffer for the string representation */
+                    fprintf(output, "    .data\n");
+                    fprintf(output, "intstr_%d: .space 12   # space for integer string\n", intstr_counter);
+                    fprintf(output, "    .text\n");
+                    
+                    /* For simplicity, we'll just return a placeholder string */
+                    /* A real implementation would convert the integer to ASCII */
+                    fprintf(output, "    la $t%d, intstr_%d\n", dest, intstr_counter);
+                    fprintf(output, "    # TODO: Implement proper int-to-string conversion\n");
+                    
+                    intstr_counter++;
+                    return dest;
+                }
+                int dest = getNextTemp();
+                fprintf(output, "    li $t%d, 0     # intToString error (0)\n", dest);
+                return dest;
+            }
+            else if (strcmp(node->data.func_call.name, "floatToString") == 0) {
+                /* floatToString(float) - convert float to string representation */
+                if (node->data.func_call.args && node->data.func_call.args->data.list.item) {
+                    int floatReg = genExpr(node->data.func_call.args->data.list.item);
+                    int dest = getNextTemp();
+                    static int floatstr_counter = 0;
+                    
+                    /* Create a temporary buffer for the string representation */
+                    fprintf(output, "    .data\n");
+                    fprintf(output, "floatstr_%d: .space 20   # space for float string\n", floatstr_counter);
+                    fprintf(output, "    .text\n");
+                    
+                    /* For simplicity, we'll just return a placeholder */
+                    fprintf(output, "    la $t%d, floatstr_%d\n", dest, floatstr_counter);
+                    fprintf(output, "    # TODO: Implement proper float-to-string conversion\n");
+                    
+                    floatstr_counter++;
+                    return dest;
+                }
+                int dest = getNextTemp();
+                fprintf(output, "    li $t%d, 0     # floatToString error (0)\n", dest);
+                return dest;
+            }
+            
             /* Regular user-defined function calls */
             /* Collect all arguments by properly handling nested ARG_LIST structure */
             ASTNode* arg = node->data.func_call.args;
@@ -701,7 +868,9 @@ static int genExpr(ASTNode* node) {
 
         case NODE_INIT_LIST:
             /* INIT_LIST should not be processed as standalone expression */
-            fprintf(stderr, "Error: NODE_INIT_LIST should not be processed as expression\n");
+            fprintf(stderr, "✗ Code Generation Error: Array initializer list found in expression context\n");
+            fprintf(stderr, "   This suggests a problem in AST construction or expression parsing.\n");
+            fprintf(stderr, "   Check array declaration syntax near this location.\n");
             exit(1);
 
         case NODE_ARG_LIST:
@@ -890,13 +1059,22 @@ static void genStmt(ASTNode* node) {
 
         case NODE_PRINT: {
             int r = genExpr(node->data.expr);
-            /* Determine if the expression is a float; if so, move bit pattern
-               into $f12 and use float-print syscall (2). Otherwise print int. */
+            /* Determine the type of expression: string, char, float, or int */
             int isFloat = 0;
-            /* Heuristic: check node kinds that represent floats */
+            int isString = 0;
+            int isChar = 0;
+            
             ASTNode* e = node->data.expr;
-            /* Simple helper inline checks */
-            if (e) {
+            /* Check if expression is a string literal */
+            if (e && e->type == NODE_STRING) {
+                isString = 1;
+            }
+            /* Check if expression is a character literal */
+            else if (e && e->type == NODE_CHAR) {
+                isChar = 1;
+            }
+            /* Check if expression is a float */
+            else if (e) {
                 if (e->type == NODE_FLOAT) isFloat = 1;
                 else if (e->type == NODE_CAST && e->data.cast.targetType && strcmp(e->data.cast.targetType, "float") == 0) isFloat = 1;
                 else if (e->type == NODE_BINOP && e->data.binop.op == BINOP_DIV) isFloat = 1;
@@ -904,21 +1082,35 @@ static void genStmt(ASTNode* node) {
                     /* lookup symbol type */
                     Symbol* s = lookupSymbol(e->data.name);
                     if (s && s->type && strcmp(s->type, "float") == 0) isFloat = 1;
-                    /* Variables marked as float in symbol table should be printed as float */
-                    /* This relies on proper type tracking in assignments */
+                    else if (s && s->type && strcmp(s->type, "string") == 0) isString = 1;
+                    else if (s && s->type && strcmp(s->type, "char") == 0) isChar = 1;
                 } else if (e->type == NODE_ARRAY_ACCESS) {
                     if (isArrayVar(e->data.array_access.name)) {
                         int asz = getArraySize(e->data.array_access.name);
                         Symbol* s = lookupSymbol(e->data.array_access.name);
                         if (s && s->type && strcmp(s->type, "float") == 0) isFloat = 1;
+                        else if (s && s->type && strcmp(s->type, "string") == 0) isString = 1;
+                        else if (s && s->type && strcmp(s->type, "char") == 0) isChar = 1;
                     }
                 } else if (e->type == NODE_FUNC_CALL) {
                     Symbol* s = lookupSymbol(e->data.func_call.name);
                     if (s && s->type && strcmp(s->type, "float") == 0) isFloat = 1;
+                    else if (s && s->type && strcmp(s->type, "string") == 0) isString = 1;
+                    else if (s && s->type && strcmp(s->type, "char") == 0) isChar = 1;
                 }
             }
 
-            if (isFloat) {
+            if (isString) {
+                /* For strings, the register contains the address of the string */
+                fprintf(output, "    move $a0, $t%d\n", r);
+                fprintf(output, "    li $v0, 4\n    syscall\n");      /* print string */
+                fprintf(output, "    li $a0, 10\n    li $v0, 11\n    syscall\n"); /* newline */
+            } else if (isChar) {
+                /* For characters, print as character */
+                fprintf(output, "    move $a0, $t%d\n", r);
+                fprintf(output, "    li $v0, 11\n    syscall\n");     /* print char */
+                fprintf(output, "    li $a0, 10\n    li $v0, 11\n    syscall\n"); /* newline */
+            } else if (isFloat) {
                 /* move integer-bit-pattern into $f12 and call float print */
                 fprintf(output, "    mtc1 $t%d, $f12\n", r);
                 fprintf(output, "    li $v0, 2\n    syscall\n"); /* print float */
@@ -1007,6 +1199,94 @@ static void genStmt(ASTNode* node) {
             genExpr(node);  // Reuse the expression handler which has syscall support
             break;
         }
+
+        case NODE_RETRY: {
+            /* Generate MIPS assembly for retry loop */
+            char* loopLabel = newLabel("retry_loop");
+            char* failLabel = newLabel("retry_fail");
+            char* endLabel = newLabel("retry_end");
+            
+            // Save the previous retry context and set current one
+            char* prev_retry_end = current_retry_end_label;
+            current_retry_end_label = endLabel;
+            
+            // Create counter variable on stack
+            fprintf(output, "    addi $sp, $sp, -4   # alloc retry counter\n");
+            currentLocalBytes += 4;
+            int counterOffset = currentLocalBytes;  // Offset from $fp
+            
+            // Initialize counter to 0
+            fprintf(output, "    li $t0, 0\n");
+            fprintf(output, "    sw $t0, -%d($fp)    # initialize counter = 0\n", counterOffset);
+            
+            // Loop start label
+            fprintf(output, "%s:\n", loopLabel);
+            
+            // Check if attempts exceeded
+            fprintf(output, "    lw $t0, -%d($fp)    # load counter\n", counterOffset);
+            fprintf(output, "    li $t1, %d          # load max attempts\n", node->data.retry.attempts);
+            fprintf(output, "    bge $t0, $t1, %s    # if counter >= attempts, goto fail\n", failLabel);
+            
+            // Increment counter
+            fprintf(output, "    addi $t0, $t0, 1    # increment counter\n");
+            fprintf(output, "    sw $t0, -%d($fp)    # store counter\n", counterOffset);
+            
+            // Generate main retry body
+            genStmt(node->data.retry.body);
+            
+            // Add backoff delay if specified
+            if (node->data.retry.backoff > 0) {
+                // Simple delay loop - multiply backoff by 1000 for rough millisecond timing
+                int delay_cycles = node->data.retry.backoff * 1000;
+                fprintf(output, "    li $t2, %d          # load delay cycles\n", delay_cycles);
+                char* delayLoop = newLabel("delay_loop");
+                fprintf(output, "%s:\n", delayLoop);
+                fprintf(output, "    addi $t2, $t2, -1   # decrement delay counter\n");
+                fprintf(output, "    bgt $t2, $zero, %s  # continue delay if > 0\n", delayLoop);
+                free(delayLoop);
+            }
+            
+            // Jump back to retry (loop back)
+            fprintf(output, "    j %s\n", loopLabel);
+            
+            // Fail label - all attempts exhausted
+            fprintf(output, "%s:\n", failLabel);
+            
+            // Generate onfail block if it exists
+            if (node->data.retry.onfail) {
+                genStmt(node->data.retry.onfail);
+            }
+            
+            // Jump to end
+            fprintf(output, "    j %s\n", endLabel);
+            
+            // End label
+            fprintf(output, "%s:\n", endLabel);
+            
+            // Restore previous retry context
+            current_retry_end_label = prev_retry_end;
+            
+            // Deallocate counter
+            fprintf(output, "    addi $sp, $sp, 4    # deallocate retry counter\n");
+            currentLocalBytes -= 4;
+            
+            free(loopLabel);
+            free(failLabel);
+            free(endLabel);
+            break;
+        }
+
+        case NODE_BREAK:
+            if (current_retry_end_label) {
+                /* Break from current retry loop - jump to end label */
+                fprintf(output, "    j %s    # break from retry loop\n", current_retry_end_label);
+            } else {
+                /* Error: break outside retry loop */
+                fprintf(stderr, "✗ Semantic Error: 'break' statement used outside of retry loop\n");
+                fprintf(stderr, "   Break statements can only be used within retry { } blocks.\n");
+                fprintf(stderr, "   To exit other control structures, use return statements or conditional logic.\n");
+            }
+            break;
 
         default:
             /* unhandled statement kind (arrays, etc.) */
@@ -1146,7 +1426,15 @@ void genFunctions(ASTNode* node) {
  * ============================================================ */
 void generateMIPS(ASTNode* root, const char* filename) {
     output = fopen(filename, "w");
-    if (!output) { perror("Error opening output file"); exit(1); }
+    if (!output) { 
+        fprintf(stderr, "✗ File Error: Cannot create output file '%s'\n", filename);
+        fprintf(stderr, "Possible causes:\n");
+        fprintf(stderr, "  • Invalid output path or directory\n");
+        fprintf(stderr, "  • Insufficient write permissions\n");
+        fprintf(stderr, "  • Disk space full\n");
+        fprintf(stderr, "  • File is locked by another program\n");
+        exit(1); 
+    }
 
     /* Preamble */
     fprintf(output, ".data\nnewline: .asciiz \"\\n\"\n\n.text\n.globl main\n");
@@ -1197,5 +1485,4 @@ void generateMIPS(ASTNode* root, const char* filename) {
          non-instruction" errors in QtSPIM. */
      fprintf(output, "\nend:\n    j end\n");
      fclose(output);
-    printf("✓ MIPS assembly generated: %s\n", filename);
 }

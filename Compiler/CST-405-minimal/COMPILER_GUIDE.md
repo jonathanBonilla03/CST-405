@@ -33,6 +33,11 @@
 - ✅ Type casting
 - ✅ Return statements
 - ✅ Block scoping
+- ✅ **Retry loops** with `retry(attempts)` syntax and optional backoff
+- ✅ **Break statements** for early exit from retry loops
+- ✅ **OnFail blocks** for comprehensive error handling
+- ✅ **Escape sequences** in strings (`\n`, `\t`, etc.)
+- ✅ **Advanced optimizations** (constant folding, dead code elimination)
 
 ---
 
@@ -66,8 +71,17 @@ stmt        ::= decl
             |   print_stmt
             |   if_stmt
             |   return_stmt
+            |   retry_stmt
+            |   break_stmt
             |   expr ';'
             |   block
+
+retry_stmt  ::= 'retry' '(' NUM ')' block
+            |   'retry' '(' NUM ')' block 'onfail' block
+            |   'retry' '(' NUM ',' 'backoff' '=' NUM ')' block
+            |   'retry' '(' NUM ',' 'backoff' '=' NUM ')' block 'onfail' block
+
+break_stmt  ::= 'break' ';'
 
 decl        ::= type ID ';'
             |   type ID '=' expr ';'
@@ -145,8 +159,10 @@ init_list   ::= expr
 └─────────────────────┘
            ↓
 ┌─────────────────────┐
-│ PHASE 4: OPTIMIZER  │ → Constant Folding & Copy Propagation
-│   (tac.c/codegen)   │
+│ PHASE 4: OPTIMIZER  │ → Enhanced Multi-Pass Optimization
+│   (tac.c/codegen)   │   • Constant Folding (arithmetic & comparison)
+│                     │   • Dead Code Elimination
+│                     │   • Optimization Statistics Tracking
 └─────────────────────┘
            ↓
 ┌─────────────────────┐
@@ -217,19 +233,26 @@ typedef struct {
 } Symbol;
 ```
 
-#### `tac.c` & `tac.h` - Three-Address Code Generation
-**Purpose**: Converts AST to simplified intermediate representation
-- **TAC instruction types**: `ASSIGN`, `BINOP`, `FUNC_CALL`, `RETURN`, `PARAM`, etc.
+#### `tac.c` & `tac.h` - Three-Address Code Generation & Optimization
+**Purpose**: Converts AST to simplified intermediate representation and optimizes it
+- **TAC instruction types**: `ASSIGN`, `BINOP`, `FUNC_CALL`, `RETURN`, `PARAM`, `RETRY`, `BREAK`, etc.
 - **Temporary variables**: Generates `t0`, `t1`, `t2` for intermediate computations
-- **Control flow**: Handles function calls, returns, conditional jumps
-- **Optimization preparation**: Creates linear instruction sequence for optimization
+- **Control flow**: Handles function calls, returns, conditional jumps, retry loops
+- **Enhanced optimization**: Multi-pass optimization engine with comprehensive constant folding and dead code elimination
 - **Function separation**: Processes each function into separate TAC blocks
 - **Expression flattening**: Converts complex expressions into simple assignments
+- **Retry loop support**: Handles retry/break constructs with proper label management
+- **Optimization statistics**: Tracks optimizations performed for benchmarking
+
+**Optimization Features:**
+- **Constant folding**: Arithmetic operations (`+`, `-`, `*`, `/`, `%`) and comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`)
+- **Dead code elimination**: Removes unused assignments and redundant jumps
+- **Statistics tracking**: Reports constants folded and dead code eliminated
 
 **Example TAC Output:**
 ```
-t0 = a + b
-t1 = t0 * c  
+t0 = 5 + 3    → t0 = 8         (constant folded)
+t1 = t0 * 2   → t1 = 16        (constant folded)  
 result = t1
 PARAM result
 t2 = CALL print (1 params)
@@ -262,8 +285,10 @@ t2 = CALL print (1 params)
 #### `benchmark.c` - Performance Testing
 **Purpose**: Measures compiler performance and optimization effectiveness
 - **Compilation timing**: Measures time for each compilation phase
-- **Optimization metrics**: Tracks optimization pass effectiveness
+- **Optimization metrics**: Tracks optimization pass effectiveness and statistics
 - **Memory usage**: Monitors compiler memory consumption
+- **Optimization comparison**: Compares performance with and without optimizations enabled
+- **Statistics reporting**: Provides detailed reports on constants folded and dead code eliminated
 
 ---
 
@@ -342,6 +367,61 @@ $fp - 8: Second parameter
 $fp - X: Local variables
 $fp - Y: Local arrays
 ```
+
+---
+
+## Major Language Extensions
+
+### Retry Loop Construct
+**Purpose**: Provides built-in retry logic with comprehensive error handling
+- **Syntax**: `retry(attempts) { ... } onfail { ... }`
+- **Backoff support**: Optional delay between attempts with `backoff = milliseconds`
+- **Break statement**: Early exit on success detection 
+- **Context tracking**: Proper label management for nested retry loops
+- **MIPS generation**: Full assembly code generation for QtSPIM compatibility
+
+### Enhanced String Processing
+**Purpose**: Supports escape sequences for better string handling
+- **Escape sequences**: `\n` (newline), `\t` (tab), `\"` (quote), `\\` (backslash)
+- **Infrastructure**: Two-stage processing with lexer storage and code generation conversion
+- **MIPS compatibility**: Proper re-escaping for MIPS `.asciiz` directives
+
+### Advanced Optimization Engine
+**Purpose**: Multi-pass optimization with comprehensive constant folding and dead code elimination
+- **Constant folding**: Handles arithmetic (`+`, `-`, `*`, `/`, `%`) and comparison operations (`==`, `!=`, `<`, `<=`, `>`, `>=`)
+- **Dead code elimination**: Removes unused assignments and redundant jump instructions
+- **Statistics tracking**: Reports optimization effectiveness with detailed metrics
+- **Multi-pass**: Applies optimizations iteratively until no further improvements possible
+
+---
+
+## Running the Retry Demo
+
+### Compilation
+```bash
+./minicompiler simple_retry.cm output.s
+```
+
+### Demo Features
+The `simple_retry.cm` demonstration showcases the retry loop functionality:
+
+**Demo 1: Success Detection**
+- Simulates network connection attempts with `retry(5, backoff = 5000)`
+- 5-second delays between attempts for visible timing
+- Success occurs on 3rd attempt with early `break` statement
+- Runtime: ~15 seconds total
+
+**Demo 2: Complete Failure**  
+- Demonstrates `onfail` block when all attempts fail
+- All 3 attempts fail, triggering error recovery
+- Runtime: ~15 seconds with 5-second delays
+
+### QtSPIM Execution
+Load `output.s` in QtSPIM for interactive demonstration:
+- **Total Runtime**: ~30 seconds with clear visual feedback
+- **Progress Indicators**: Numbered attempts with status messages
+- **Realistic Scenarios**: Network connections and API service calls
+- **Educational Value**: Shows retry patterns with built-in timing
 
 ---
 

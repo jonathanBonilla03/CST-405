@@ -69,6 +69,7 @@ typedef enum {
     NODE_FLOAT,
     NODE_VAR,
     NODE_BOOL,
+    NODE_CHAR,
     NODE_STRING,
     NODE_BINOP,
     NODE_UNOP,
@@ -92,7 +93,9 @@ typedef enum {
     NODE_ARG_LIST,     // List of arguments in call
     NODE_RETURN,       // Return statement
     NODE_FUNC_LIST,    // List of function declarations
-    NODE_BLOCK         // Compound statement (for scoping)
+    NODE_BLOCK,        // Compound statement (for scoping)
+    NODE_RETRY,        // Retry statement
+    NODE_BREAK         // Break statement
 } NodeType;
 
 /* === AST NODE STRUCTURE === */
@@ -104,6 +107,7 @@ typedef struct ASTNode {
         float decimal;
         char* name;
         char* string;
+        char character;
         bool boolean;
 
         // --- Expressions ---
@@ -156,6 +160,14 @@ typedef struct ASTNode {
         // Return statement
         struct ASTNode* return_expr; // Expression to return (NULL for void)
 
+        // Retry statement
+        struct {
+            int attempts;              // Number of retry attempts
+            int backoff;               // Backoff time in ms (0 if none)
+            struct ASTNode* body;      // Main block to execute
+            struct ASTNode* onfail;    // Optional onfail block (NULL if none)
+        } retry;
+
     } data;
 } ASTNode;
 
@@ -164,6 +176,7 @@ ASTNode* createNum(int value);
 ASTNode* createFloat(float value);
 ASTNode* createVar(char* name);
 ASTNode* createBool(bool value);
+ASTNode* createChar(char value);
 ASTNode* createString(char* value);
 ASTNode* createBinOp(BinOpKind op, ASTNode* left, ASTNode* right);
 ASTNode* createUnaryOp(UnOpKind op, ASTNode* expr);
@@ -188,7 +201,9 @@ ASTNode* createArrayParam(char* type, char* name);
 ASTNode* createParamList(ASTNode* param, ASTNode* next);
 ASTNode* createArgList(ASTNode* arg, ASTNode* next);
 ASTNode* createReturn(ASTNode* expr);
+ASTNode* createBreak();
 ASTNode* createFuncList(ASTNode* func, ASTNode* next);
+ASTNode* createRetry(int attempts, int backoff, ASTNode* body, ASTNode* onfail);
 void printAST(ASTNode* node, int level);
 void init_ast_memory();
 void* ast_alloc(size_t size);

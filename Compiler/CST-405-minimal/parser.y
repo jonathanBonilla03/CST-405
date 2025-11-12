@@ -20,6 +20,7 @@ ASTNode* root = NULL;
     int num;
     float floats;
     char* str;
+    char character;
     bool boolean;
     struct ASTNode* node;
 }
@@ -28,8 +29,9 @@ ASTNode* root = NULL;
 %token <num> NUM
 %token <floats> FLOAT_LITERAL
 %token <str> ID STRING_LITERAL
+%token <character> CHAR_LITERAL
 %token <boolean> BOOL_LITERAL
-%token INT FLOAT BOOL STRING PRINT IF ELSE RETURN VOID
+%token INT FLOAT BOOL CHAR STRING PRINT IF ELSE RETURN VOID RETRY BACKOFF ONFAIL BREAK
 %token EQ NE LE GE LT GT
 %token AND OR NOT EXPONENT
 
@@ -45,10 +47,10 @@ ASTNode* root = NULL;
 %right EXPONENT
 %right UMINUS CAST
 
-%expect 1
+%expect 3
 
 /* === Non-terminal types === */
-%type <node> program func_list stmt_list stmt decl assign expr print_stmt if_stmt block func_decl param_list param arg_list return_stmt init_list
+%type <node> program func_list stmt_list stmt decl assign expr print_stmt if_stmt block func_decl param_list param arg_list return_stmt break_stmt init_list retry_stmt
 %type <str> type
 
 %%
@@ -80,6 +82,7 @@ type:
       INT     { $$ = "int"; }
     | FLOAT   { $$ = "float"; }
     | BOOL    { $$ = "bool"; }
+    | CHAR    { $$ = "char"; }
     | STRING  { $$ = "string"; }
     | VOID    { $$ = "void"; }
     ;
@@ -105,12 +108,18 @@ stmt:
     | print_stmt
     | if_stmt
     | return_stmt
+    | retry_stmt
+    | break_stmt
     | expr ';'                  { $$ = $1; }  /* Allow function calls as statements */
     ;
 
 return_stmt:
       RETURN expr ';'           { $$ = createReturn($2); }
     | RETURN ';'                { $$ = createReturn(NULL); }
+    ;
+
+break_stmt:
+      BREAK ';'                 { $$ = createBreak(); }
     ;
 
 /* --- Block: { statements } or single stmt --- */
@@ -124,15 +133,19 @@ decl:
       INT ID ';'                { $$ = createDecl("int", $2); free($2); }
     | FLOAT ID ';'              { $$ = createDecl("float", $2); free($2); }
     | BOOL ID ';'               { $$ = createDecl("bool", $2); free($2); }
+    | CHAR ID ';'               { $$ = createDecl("char", $2); free($2); }
     | STRING ID ';'             { $$ = createDecl("string", $2); free($2); }
     | INT ID '=' expr ';'       { $$ = createDeclInit("int", $2, $4); free($2); }
     | FLOAT ID '=' expr ';'     { $$ = createDeclInit("float", $2, $4); free($2); }
     | BOOL ID '=' expr ';'      { $$ = createDeclInit("bool", $2, $4); free($2); }
+    | CHAR ID '=' expr ';'      { $$ = createDeclInit("char", $2, $4); free($2); }
     | STRING ID '=' expr ';'    { $$ = createDeclInit("string", $2, $4); free($2); }
     | INT ID '[' NUM ']' ';'    { $$ = createArrayDecl("int", $2, $4); free($2); }
     | FLOAT ID '[' NUM ']' ';'  { $$ = createArrayDecl("float", $2, $4); free($2); }
+    | CHAR ID '[' NUM ']' ';'   { $$ = createArrayDecl("char", $2, $4); free($2); }
     | INT ID '[' NUM ']' '=' '{' init_list '}' ';'    { $$ = createArrayInitDecl("int", $2, $4, $8); free($2); }
     | FLOAT ID '[' NUM ']' '=' '{' init_list '}' ';'  { $$ = createArrayInitDecl("float", $2, $4, $8); free($2); }
+    | CHAR ID '[' NUM ']' '=' '{' init_list '}' ';'   { $$ = createArrayInitDecl("char", $2, $4, $8); free($2); }
     ;
 
 /* --- Assignments --- */
@@ -155,6 +168,14 @@ if_stmt:
                                 { $$ = createIf($3, $5, $7); }
     ;
 
+/* --- Retry statements --- */
+retry_stmt:
+      RETRY '(' NUM ')' block                           { $$ = createRetry($3, 0, $5, NULL); }
+    | RETRY '(' NUM ',' BACKOFF '=' NUM ')' block       { $$ = createRetry($3, $7, $9, NULL); }
+    | RETRY '(' NUM ')' block ONFAIL block              { $$ = createRetry($3, 0, $5, $7); }
+    | RETRY '(' NUM ',' BACKOFF '=' NUM ')' block ONFAIL block  { $$ = createRetry($3, $7, $9, $11); }
+    ;
+
 /* --- Print --- */
 print_stmt:
       PRINT '(' expr ')' ';'    { $$ = createPrint($3); }
@@ -165,6 +186,7 @@ expr:
       NUM                       { $$ = createNum($1); }
     | FLOAT_LITERAL             { $$ = createFloat($1); }
     | BOOL_LITERAL              { $$ = createBool($1); }
+    | CHAR_LITERAL              { $$ = createChar($1); }
     | STRING_LITERAL            { $$ = createString($1); free($1); }
     | ID                        { $$ = createVar($1); free($1); }
     | ID '[' expr ']'           { $$ = createArrayAccess($1, $3); free($1); }

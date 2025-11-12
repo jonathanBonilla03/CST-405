@@ -33,6 +33,16 @@ void initSymTab() {
     
     char* outputStringParamTypes[] = {"string"};
     addFunction("outputString", "void", outputStringParamTypes, 1);
+    
+    /* Add type conversion functions */
+    char* charToStringParams[] = {"char"};
+    addFunction("charToString", "string", charToStringParams, 1);
+    
+    char* intToStringParams[] = {"int"};
+    addFunction("intToString", "string", intToStringParams, 1);
+    
+    char* floatToStringParams[] = {"float"};
+    addFunction("floatToString", "string", floatToStringParams, 1);
 
     printf("SYMBOL TABLE: Initialized with global scope and built-in functions\n");
     printSymTab();

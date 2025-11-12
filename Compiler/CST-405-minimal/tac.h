@@ -47,7 +47,11 @@ typedef enum {
     TAC_CALL,        // Function call: result = CALL func_name, num_params
     TAC_RETURN,      // Return value: RETURN value
     TAC_FUNC_BEGIN,  // Mark function start: FUNC_BEGIN name
-    TAC_FUNC_END     // Mark function end: FUNC_END name
+    TAC_FUNC_END,    // Mark function end: FUNC_END name
+    TAC_RETRY_BEGIN, // Mark retry loop begin: RETRY_BEGIN attempts
+    TAC_RETRY_END,   // Mark retry loop end: RETRY_END
+    TAC_RETRY_CHECK, // Check if retry should continue: RETRY_CHECK counter, limit
+    TAC_BACKOFF      // Backoff delay: BACKOFF milliseconds
 } TACOp;
 
 /* TAC INSTRUCTION STRUCTURE */

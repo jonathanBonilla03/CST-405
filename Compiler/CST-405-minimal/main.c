@@ -19,14 +19,27 @@ int main(int argc, char* argv[]) {
     init_ast_memory();
 
     if (argc != 3) {
-        printf("Usage: %s <input.c> <output.s>\n", argv[0]);
-        printf("Example: ./minicompiler test.cminus output.s\n");
+        printf("C-Minus Compiler - Educational Version\n");
+        printf("Usage: %s <source.cm> <output.s>\n\n", argv[0]);
+        printf("Arguments:\n");
+        printf("  source.cm  - C-Minus source file to compile\n");
+        printf("  output.s   - Output MIPS assembly file\n\n");
+        printf("Examples:\n");
+        printf("  %s test.cm test.s\n", argv[0]);
+        printf("  %s simple_retry.cm output.s\n", argv[0]);
+        printf("  %s test_functions_only.cm functions.s\n\n", argv[0]);
+        printf("Note: Output file will be created/overwritten in current directory.\n");
         return 1;
     }
 
     yyin = fopen(argv[1], "r");
     if (!yyin) {
-        fprintf(stderr, "Error: Cannot open input file '%s'\n", argv[1]);
+        fprintf(stderr, "✗ File Error: Cannot open source file '%s'\n", argv[1]);
+        fprintf(stderr, "Possible causes:\n");
+        fprintf(stderr, "  • File does not exist in the current directory\n");
+        fprintf(stderr, "  • Insufficient permissions to read the file\n");
+        fprintf(stderr, "  • File path contains invalid characters\n");
+        fprintf(stderr, "  • Current directory: Run 'dir' (Windows) or 'ls' (Linux) to see files\n");
         return 1;
     }
 
@@ -46,11 +59,14 @@ int main(int argc, char* argv[]) {
     printf("└──────────────────────────────────────────────────────────┘\n");
 
     if (yyparse() != 0) {
-        printf("✗ Parse failed - check syntax errors.\n");
-        printf("Common issues:\n");
-        printf("  • Missing semicolons\n");
-        printf("  • Unclosed braces\n");
-        printf("  • Invalid variable usage\n");
+        printf("✗ Compilation failed during syntax analysis.\n");
+        printf("Note: Specific error details are shown above with line numbers.\n");
+        printf("\nQuick debugging tips:\n");
+        printf("  • Check the line number mentioned in the error\n");
+        printf("  • Look for missing semicolons after statements\n");
+        printf("  • Ensure all braces { } are properly matched\n");
+        printf("  • Verify variable names are declared before use\n");
+        printf("  • Check function call syntax and parameter count\n");
         fclose(yyin);
         return 1;
     }
@@ -103,7 +119,14 @@ int main(int argc, char* argv[]) {
         printf("✓ MIPS assembly generated: %s\n", argv[2]);
         fclose(check);
     } else {
-        printf("✗ Error: Failed to generate output file '%s'\n", argv[2]);
+        printf("✗ Code Generation Error: Failed to create output file '%s'\n", argv[2]);
+        printf("Possible causes:\n");
+        printf("  • Invalid output file path or directory\n");
+        printf("  • Insufficient permissions to write in target directory\n");
+        printf("  • Disk space full\n");
+        printf("  • File may be open in another program\n");
+        printf("  • Internal compiler error during MIPS generation\n");
+        return 1;
     }
 
     printf("\n╔════════════════════════════════════════════════════════════╗\n");
@@ -117,7 +140,7 @@ int main(int argc, char* argv[]) {
 
 /* === OPTIONAL: Symbol Table Performance Benchmark === */
 void test_symbol_table_performance() {
-    BenchmarkResult* bench = start_benchmark();
+    CompilerBenchmark* bench = start_compiler_benchmark();
 
     for (int i = 0; i < 1000; i++) {
         char varname[20];
@@ -131,7 +154,7 @@ void test_symbol_table_performance() {
         getVarOffset(varname);
     }
 
-    end_benchmark(bench, "Symbol Table Performance");
+    end_compiler_benchmark(bench, "Symbol Table Performance");
 
     // Removed the nonexistent field
     // printf("Collisions: %d\n", symtab.collisions);

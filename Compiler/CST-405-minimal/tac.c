@@ -8,6 +8,7 @@ TACList tacList;
 TACList optimizedList;
 OptimizationStats opt_stats = {0};
 static int labelCount = 0;
+static char* current_retry_end_label = NULL;  // Track current retry loop end label for break statements
 
 /* === Helper: detect numeric constants === */
 int isConstant(const char* s) {
@@ -119,6 +120,15 @@ char* generateTACExpr(ASTNode* node) {
             return strdup(node->data.name);
         case NODE_BOOL:
             return strdup(node->data.boolean ? "1" : "0");
+        case NODE_CHAR: {
+            char* temp = malloc(8);
+            if (node->data.character >= 32 && node->data.character <= 126) {
+                sprintf(temp, "'%c'", node->data.character);
+            } else {
+                sprintf(temp, "'\\%03o'", (unsigned char)node->data.character);
+            }
+            return temp;
+        }
         case NODE_STRING: {
             /* For strings, return the string literal as is (with quotes) */
             char* temp = malloc(strlen(node->data.string) + 3);
@@ -310,6 +320,84 @@ void generateTAC(ASTNode* node) {
             break;
         }
 
+        case NODE_RETRY: {
+            // Generate labels for retry loop control
+            char* label_loop = newTACLabel();
+            char* label_onfail = newTACLabel();
+            char* label_end = newTACLabel();
+            
+            // Save the previous retry context and set current one
+            char* prev_retry_end = current_retry_end_label;
+            current_retry_end_label = label_end;
+            
+            // Create counter variable for attempts
+            char* counter = newTemp();
+            
+            // Initialize counter to 0
+            appendTAC(createTAC(TAC_ASSIGN, "0", NULL, counter));
+            
+            // Loop start label
+            appendTAC(createTAC(TAC_LABEL, NULL, NULL, label_loop));
+            
+            // Check if we've exceeded attempts
+            char* attempts_str = malloc(16);
+            sprintf(attempts_str, "%d", node->data.retry.attempts);
+            char* cmp_result = newTemp();
+            appendTAC(createTAC(TAC_GE, counter, attempts_str, cmp_result));
+            
+            // If counter >= attempts, jump to onfail (when condition is true)
+            char* not_result = newTemp();
+            appendTAC(createTAC(TAC_NOT, cmp_result, NULL, not_result));
+            appendTAC(createTAC(TAC_IFZ, not_result, NULL, label_onfail));
+            
+            // Increment counter
+            char* one = "1";
+            char* inc_result = newTemp();
+            appendTAC(createTAC(TAC_ADD, counter, one, inc_result));
+            appendTAC(createTAC(TAC_ASSIGN, inc_result, NULL, counter));
+            
+            // Generate body code
+            generateTAC(node->data.retry.body);
+            
+            // If backoff is specified, add delay
+            if (node->data.retry.backoff > 0) {
+                char* backoff_str = malloc(16);
+                sprintf(backoff_str, "%d", node->data.retry.backoff);
+                appendTAC(createTAC(TAC_BACKOFF, backoff_str, NULL, NULL));
+            }
+            
+            // Jump back to loop start (retry)
+            appendTAC(createTAC(TAC_JUMP, NULL, NULL, label_loop));
+            
+            // Onfail label
+            appendTAC(createTAC(TAC_LABEL, NULL, NULL, label_onfail));
+            
+            // Generate onfail code if it exists
+            if (node->data.retry.onfail) {
+                generateTAC(node->data.retry.onfail);
+            }
+            
+            // End label
+            appendTAC(createTAC(TAC_LABEL, NULL, NULL, label_end));
+            
+            // Restore previous retry context
+            current_retry_end_label = prev_retry_end;
+            break;
+        }
+
+        case NODE_BREAK: {
+            if (current_retry_end_label) {
+                // Break from current retry loop - jump to end label
+                appendTAC(createTAC(TAC_JUMP, NULL, NULL, current_retry_end_label));
+            } else {
+                // Error: break outside retry loop
+                fprintf(stderr, "✗ Semantic Error: 'break' statement used outside of retry loop\n");
+                fprintf(stderr, "   Break statements can only be used within retry { } blocks.\n");
+                fprintf(stderr, "   To exit other control structures, use return statements or conditional logic.\n");
+            }
+            break;
+        }
+
         default:
             break;
     }
@@ -365,30 +453,80 @@ void printTAC() {
 
 void optimizeTAC() {
     printf("\nRunning basic TAC optimizations...\n");
-    TACInstr* curr = tacList.head;
+    
+    /* Reset stats */
+    opt_stats.constant_folded = 0;
+    opt_stats.dead_code_removed = 0;
+    
+    /* Check for empty TAC list */
+    if (!tacList.head) {
+        printf("Warning: No TAC instructions to optimize\n");
+        printf("Optimization done. Constants folded: 0, Dead code eliminated: 0\n");
+        return;
+    }
+    
+    /* Safety check: Count TAC instructions to prevent infinite loops */
+    TACInstr* check = tacList.head;
+    int tac_count = 0;
+    while (check && tac_count < 10000) {  /* Very high safety limit */
+        tac_count++;
+        check = check->next;
+    }
+    
+    if (tac_count >= 10000) {
+        printf("Warning: TAC list appears corrupted (>10000 instructions), skipping optimization\n");
+        printf("Optimization done. Constants folded: 0, Dead code eliminated: 0\n");
+        return;
+    }
+    
+    printf("TAC list verified: %d instructions\n", tac_count);
 
-    while (curr && curr->next) {
-        if (curr->op == TAC_ASSIGN && curr->next->op == TAC_ASSIGN &&
-            isConstant(curr->arg1) && isConstant(curr->next->arg1)) {
-            TACInstr* add = curr->next->next;
-            if (add && (add->op == TAC_ADD || add->op == TAC_SUB) &&
-                strcmp(add->arg1, curr->result) == 0 &&
-                strcmp(add->arg2, curr->next->result) == 0) {
-                int v1 = atoi(curr->arg1);
-                int v2 = atoi(curr->next->arg1);
-                int res = (add->op == TAC_ADD) ? v1 + v2 : v1 - v2;
-                char buf[20]; sprintf(buf, "%d", res);
-                add->op = TAC_ASSIGN;
-                free(add->arg1); add->arg1 = strdup(buf);
-                free(add->arg2); add->arg2 = NULL;
-                curr->op = TAC_NOP;
-                curr->next->op = TAC_NOP;
-                opt_stats.constant_folded++;
-            }
+    /* Safe constant folding pass - only handle simple constants */
+    TACInstr* curr = tacList.head;
+    int pass1_count = 0;
+    
+    while (curr && pass1_count < tac_count + 100) {  /* Safety limit based on actual count */
+        pass1_count++;
+        
+        if (curr->op == TAC_ADD && isConstant(curr->arg1) && isConstant(curr->arg2)) {
+            int v1 = atoi(curr->arg1);
+            int v2 = atoi(curr->arg2);
+            int res = v1 + v2;
+            
+            char buf[20]; 
+            sprintf(buf, "%d", res);
+            curr->op = TAC_ASSIGN;
+            free(curr->arg1); 
+            curr->arg1 = strdup(buf);
+            free(curr->arg2); 
+            curr->arg2 = NULL;
+            opt_stats.constant_folded++;
         }
+        /* Only handle subtraction for safety */
+        else if (curr->op == TAC_SUB && isConstant(curr->arg1) && isConstant(curr->arg2)) {
+            int v1 = atoi(curr->arg1);
+            int v2 = atoi(curr->arg2);
+            int res = v1 - v2;
+            
+            char buf[20]; 
+            sprintf(buf, "%d", res);
+            curr->op = TAC_ASSIGN;
+            free(curr->arg1); 
+            curr->arg1 = strdup(buf);
+            free(curr->arg2); 
+            curr->arg2 = NULL;
+            opt_stats.constant_folded++;
+        }
+        
         curr = curr->next;
     }
-    printf("Optimization done. Constants folded: %d\n", opt_stats.constant_folded);
+    
+    if (pass1_count >= tac_count + 100) {
+        printf("Warning: Pass 1 hit safety limit\n");
+    }
+    
+    printf("Optimization done. Constants folded: %d, Dead code eliminated: %d\n", 
+           opt_stats.constant_folded, opt_stats.dead_code_removed);
 }
 
 void printOptimizedTAC() {
@@ -405,8 +543,16 @@ void printOptimizedTAC() {
                 case TAC_ASSIGN: printf("%s = %s\n", curr->result, curr->arg1); break;
                 case TAC_ADD: printf("%s = %s + %s\n", curr->result, curr->arg1, curr->arg2); break;
                 case TAC_SUB: printf("%s = %s - %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_MUL: printf("%s = %s * %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_DIV: printf("%s = %s / %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_MOD: printf("%s = %s %% %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_EXP: printf("%s = %s ** %s\n", curr->result, curr->arg1, curr->arg2); break;
                 case TAC_PRINT: printf("PRINT %s\n", curr->arg1); break;
                 case TAC_RETURN: printf("RETURN %s\n", curr->arg1 ? curr->arg1 : ""); break;
+                case TAC_IFZ: printf("IFZ %s GOTO %s\n", curr->arg1, curr->result); break;
+                case TAC_JUMP: printf("JUMP %s\n", curr->result); break;
+                case TAC_LABEL: printf("%s:\n", curr->result); break;
+                case TAC_PARAM: printf("PARAM %s\n", curr->arg1); break;
                 case TAC_CALL: printf("%s = CALL %s (%d params)\n", curr->result, curr->arg1, curr->paramCount); break;
                 case TAC_FUNC_BEGIN: printf("FUNC_BEGIN %s\n", curr->result); break;
                 case TAC_FUNC_END: printf("FUNC_END %s\n", curr->result); break;
@@ -421,6 +567,12 @@ void printOptimizedTAC() {
                 case TAC_NE: printf("%s = %s != %s\n", curr->result, curr->arg1, curr->arg2); break;
                 case TAC_NEG: printf("%s = -%s\n", curr->result, curr->arg1); break;
                 case TAC_NOT: printf("%s = !%s\n", curr->result, curr->arg1); break;
+                case TAC_AND: printf("%s = %s && %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_OR: printf("%s = %s || %s\n", curr->result, curr->arg1, curr->arg2); break;
+                case TAC_RETRY_BEGIN: printf("RETRY_BEGIN %s (attempts: %s)\n", curr->result, curr->arg1); break;
+                case TAC_RETRY_END: printf("RETRY_END %s\n", curr->result); break;
+                case TAC_RETRY_CHECK: printf("RETRY_CHECK %s >= %s\n", curr->arg1, curr->arg2); break;
+                case TAC_BACKOFF: printf("BACKOFF %s ms\n", curr->arg1); break;
                 default: printf("(unknown)\n"); break;
             }
         }

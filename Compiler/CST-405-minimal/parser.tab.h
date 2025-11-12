@@ -43,28 +43,34 @@
      FLOAT_LITERAL = 259,
      ID = 260,
      STRING_LITERAL = 261,
-     BOOL_LITERAL = 262,
-     INT = 263,
-     FLOAT = 264,
-     BOOL = 265,
-     STRING = 266,
-     PRINT = 267,
-     IF = 268,
-     ELSE = 269,
-     RETURN = 270,
-     VOID = 271,
-     EQ = 272,
-     NE = 273,
-     LE = 274,
-     GE = 275,
-     LT = 276,
-     GT = 277,
-     AND = 278,
-     OR = 279,
-     NOT = 280,
-     EXPONENT = 281,
-     CAST = 282,
-     UMINUS = 283
+     CHAR_LITERAL = 262,
+     BOOL_LITERAL = 263,
+     INT = 264,
+     FLOAT = 265,
+     BOOL = 266,
+     CHAR = 267,
+     STRING = 268,
+     PRINT = 269,
+     IF = 270,
+     ELSE = 271,
+     RETURN = 272,
+     VOID = 273,
+     RETRY = 274,
+     BACKOFF = 275,
+     ONFAIL = 276,
+     BREAK = 277,
+     EQ = 278,
+     NE = 279,
+     LE = 280,
+     GE = 281,
+     LT = 282,
+     GT = 283,
+     AND = 284,
+     OR = 285,
+     NOT = 286,
+     EXPONENT = 287,
+     CAST = 288,
+     UMINUS = 289
    };
 #endif
 
@@ -80,13 +86,14 @@ typedef union YYSTYPE
     int num;
     float floats;
     char* str;
+    char character;
     bool boolean;
     struct ASTNode* node;
 
 
 
 /* Line 1676 of yacc.c  */
-#line 90 "parser.tab.h"
+#line 97 "parser.tab.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */

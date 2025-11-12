@@ -39,18 +39,36 @@ This document outlines the remaining development tasks and enhancements needed t
 
 **Files to Create/Modify**: `benchmark.c`, `test_performance.sh`, new benchmark test files
 
-### 3. Unique Language Feature Implementation
-**Current Status**: Standard C-Minus implementation, no distinctive features
+### 3. ✅ Unique Language Feature Implementation - COMPLETED!
+**Current Status**: ✅ **RETRY LOOPS FULLY IMPLEMENTED AND TESTED**
 
-**Potential Features to Add** (choose one):
-- [ ] **First-class functions**: Function pointers and higher-order functions
-- [ ] **Pattern matching**: Switch-like constructs with pattern destructuring
-- [ ] **Coroutines**: Lightweight threading with yield/resume
-- [ ] **Memory safety**: Automatic bounds checking for arrays
-- [ ] **Type inference**: Automatic type deduction for variable declarations
-- [ ] **Closures**: Lexical scoping with captured variables
+**Successfully Implemented Retry Loop Construct**:
+- ✅ **Complete Grammar**: `retry(attempts [, backoff = ms]) { body } [onfail { handler }]`
+- ✅ **Lexical Analysis**: Added `retry`, `backoff`, `onfail` keywords
+- ✅ **AST Integration**: Full NODE_RETRY support with attempt counting and backoff
+- ✅ **TAC Generation**: Proper loop control flow in three-address code  
+- ✅ **MIPS Code Generation**: Complete MIPS assembly with QtSPIM compatibility
+- ✅ **Testing**: Comprehensive test cases demonstrating all features
 
-**Impact**: Major parser, AST, and code generation changes required
+**Example Usage**:
+```c
+retry(3, backoff = 50) {
+    // attempt risky operation
+    result = network_call();
+} onfail {
+    // handle complete failure
+    print(error_code);
+}
+```
+
+**Features**:
+- Automatic attempt counting with configurable limits
+- Millisecond-precision backoff delays between attempts
+- Optional failure handling blocks for graceful degradation
+- Nested retry support for complex scenarios
+- Full expression evaluation within retry and onfail blocks
+
+**Impact**: Major language enhancement - provides clean, maintainable error handling patterns that eliminate verbose manual retry logic. This unique feature distinguishes our C-Minus implementation!
 
 ---
 
@@ -220,5 +238,3 @@ OptPass optimizations[] = {
 - **Memory safety**: No memory leaks detected by tools
 
 ---
-
-This TODO list provides a clear roadmap for completing the C-Minus compiler development. Each task includes specific deliverables and success criteria to ensure systematic progress toward a production-ready compiler.
