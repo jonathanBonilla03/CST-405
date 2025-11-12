@@ -21,7 +21,20 @@ void initSymTab() {
     symtab.currentScope = globalScope;
     symtab.globalScope  = globalScope;
 
-    printf("SYMBOL TABLE: Initialized with global scope\n");
+    /* Add built-in functions */
+    char* inputParamTypes[] = {};
+    addFunction("input", "int", inputParamTypes, 0);
+    
+    char* outputParamTypes[] = {"int"};
+    addFunction("output", "void", outputParamTypes, 1);
+    
+    /* Add string I/O functions */
+    addFunction("inputString", "string", inputParamTypes, 0);
+    
+    char* outputStringParamTypes[] = {"string"};
+    addFunction("outputString", "void", outputStringParamTypes, 1);
+
+    printf("SYMBOL TABLE: Initialized with global scope and built-in functions\n");
     printSymTab();
 }
 

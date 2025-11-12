@@ -1,0 +1,23 @@
+/* Simple test to verify complexExpression function works correctly */
+int complexExpression(int a, int b, int c) {
+    int temp;
+    temp = a * b + c - a / b;
+    return temp;
+}
+
+void main(void) {
+    int result;
+    
+    /* Test with inputs that should give a predictable result */
+    /* complexExpression(6, 2, 1) = 6*2 + 1 - 6/2 = 12 + 1 - 3 = 10 */
+    result = complexExpression(6, 2, 1);
+    output(result);
+    
+    /* complexExpression(4, 2, 3) = 4*2 + 3 - 4/2 = 8 + 3 - 2 = 9 */
+    result = complexExpression(4, 2, 3);
+    output(result);
+    
+    /* complexExpression(1, 2, 3) = 1*2 + 3 - 1/2 = 2 + 3 - 0 = 5 */
+    result = complexExpression(1, 2, 3);
+    output(result);
+}

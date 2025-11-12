@@ -58,6 +58,7 @@ typedef enum {
     TYPE_INT,
     TYPE_FLOAT,
     TYPE_BOOL,
+    TYPE_STRING,
     TYPE_VOID,
     TYPE_UNKNOWN
 } TypeKind;
@@ -68,6 +69,7 @@ typedef enum {
     NODE_FLOAT,
     NODE_VAR,
     NODE_BOOL,
+    NODE_STRING,
     NODE_BINOP,
     NODE_UNOP,
     NODE_DECL,
@@ -101,6 +103,7 @@ typedef struct ASTNode {
         int num;
         float decimal;
         char* name;
+        char* string;
         bool boolean;
 
         // --- Expressions ---
@@ -141,6 +144,7 @@ typedef struct ASTNode {
         struct {
             char* type;              // Parameter type
             char* name;              // Parameter name
+            int isArray;             // 1 if array parameter, 0 if regular
         } param;
 
         // Parameter/Argument list
@@ -160,6 +164,7 @@ ASTNode* createNum(int value);
 ASTNode* createFloat(float value);
 ASTNode* createVar(char* name);
 ASTNode* createBool(bool value);
+ASTNode* createString(char* value);
 ASTNode* createBinOp(BinOpKind op, ASTNode* left, ASTNode* right);
 ASTNode* createUnaryOp(UnOpKind op, ASTNode* expr);
 ASTNode* createDecl(char* type, char* name);
@@ -179,6 +184,7 @@ ASTNode* createFuncDecl(char* returnType, char* name,
                         ASTNode* params, ASTNode* body);
 ASTNode* createFuncCall(char* name, ASTNode* args);
 ASTNode* createParam(char* type, char* name);
+ASTNode* createArrayParam(char* type, char* name);
 ASTNode* createParamList(ASTNode* param, ASTNode* next);
 ASTNode* createArgList(ASTNode* arg, ASTNode* next);
 ASTNode* createReturn(ASTNode* expr);

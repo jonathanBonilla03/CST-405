@@ -42,27 +42,29 @@
      NUM = 258,
      FLOAT_LITERAL = 259,
      ID = 260,
-     BOOL_LITERAL = 261,
-     INT = 262,
-     FLOAT = 263,
-     BOOL = 264,
-     PRINT = 265,
-     IF = 266,
-     ELSE = 267,
-     RETURN = 268,
-     VOID = 269,
-     EQ = 270,
-     NE = 271,
-     LE = 272,
-     GE = 273,
-     LT = 274,
-     GT = 275,
-     AND = 276,
-     OR = 277,
-     NOT = 278,
-     EXPONENT = 279,
-     CAST = 280,
-     UMINUS = 281
+     STRING_LITERAL = 261,
+     BOOL_LITERAL = 262,
+     INT = 263,
+     FLOAT = 264,
+     BOOL = 265,
+     STRING = 266,
+     PRINT = 267,
+     IF = 268,
+     ELSE = 269,
+     RETURN = 270,
+     VOID = 271,
+     EQ = 272,
+     NE = 273,
+     LE = 274,
+     GE = 275,
+     LT = 276,
+     GT = 277,
+     AND = 278,
+     OR = 279,
+     NOT = 280,
+     EXPONENT = 281,
+     CAST = 282,
+     UMINUS = 283
    };
 #endif
 
@@ -84,7 +86,7 @@ typedef union YYSTYPE
 
 
 /* Line 1676 of yacc.c  */
-#line 88 "parser.tab.h"
+#line 90 "parser.tab.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */

@@ -124,6 +124,13 @@ ASTNode* createBool(bool value) {
     return node;
 }
 
+ASTNode* createString(char* value) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_STRING;
+    node->data.string = ast_strdup(value);
+    return node;
+}
+
 ASTNode* createBinOp(BinOpKind op, ASTNode* left, ASTNode* right) {
     ASTNode* node = ast_alloc(sizeof(ASTNode));
     node->type = NODE_BINOP;
@@ -281,6 +288,16 @@ ASTNode* createParam(char* type, char* name) {
     node->type = NODE_PARAM;
     node->data.param.type = ast_strdup(type);
     node->data.param.name = ast_strdup(name);
+    node->data.param.isArray = 0;  // Regular parameter
+    return node;
+}
+
+ASTNode* createArrayParam(char* type, char* name) {
+    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    node->type = NODE_PARAM;
+    node->data.param.type = ast_strdup(type);
+    node->data.param.name = ast_strdup(name);
+    node->data.param.isArray = 1;  // Array parameter
     return node;
 }
 
@@ -325,6 +342,9 @@ void printAST(ASTNode* node, int level) {
             break;
         case NODE_BOOL:
             printf("BOOL(%s)\n", node->data.boolean ? "true" : "false");
+            break;
+        case NODE_STRING:
+            printf("STRING(\"%s\")\n", node->data.string);
             break;
         case NODE_BINOP:
             printf("BINOP(");

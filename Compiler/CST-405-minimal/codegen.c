@@ -29,7 +29,8 @@ static char* newLabel(const char* prefix) {
 
 static int getNextTemp() {
     int r = tempReg++;
-    if (tempReg > 7) tempReg = 0;
+    /* MIPS has $t0-$t9 (10 temp registers), use all of them to reduce conflicts */
+    if (tempReg > 9) tempReg = 0;  /* Use $t0 through $t9 */
     return r;
 }
 
@@ -37,7 +38,37 @@ static int getNextTemp() {
  * EXPRESSION GENERATION
  * ============================================================ */
 static int genExpr(ASTNode* node);
+static void genStmt(ASTNode* node);
 static int hasFloatCast(ASTNode* node);
+
+/* Helper function to collect arguments from nested ARG_LIST structure */
+static void collectArgumentsRecursive(ASTNode* argNode, int* argRegs, int* numArgs) {
+    if (!argNode || *numArgs >= 4) return;
+    
+    if (argNode->type == NODE_ARG_LIST) {
+        /* Process the item (left side) first, then the next (right side) */
+        collectArgumentsRecursive(argNode->data.list.item, argRegs, numArgs);
+        collectArgumentsRecursive(argNode->data.list.next, argRegs, numArgs);
+    } else {
+        /* This is an actual argument expression - generate code for it */
+        int r;
+        
+        /* Special case: if this is an array variable being passed as argument,
+           generate its address instead of loading its value */
+        if (argNode->type == NODE_VAR && isArrayVar(argNode->data.name)) {
+            int arrayOffset = getVarOffset(argNode->data.name);
+            r = getNextTemp();
+            fprintf(output, "    addi $t%d, $fp, %d   # get address of array %s\n", 
+                   r, arrayOffset, argNode->data.name);
+        } else {
+            /* Regular argument - generate expression normally */
+            r = genExpr(argNode);
+        }
+        
+        argRegs[*numArgs] = r;
+        (*numArgs)++;
+    }
+}
 
 static int genRelop(ASTNode* node) {
     int a = genExpr(node->data.relop.left);
@@ -279,6 +310,21 @@ static int genExpr(ASTNode* node) {
             return r;
         }
 
+        case NODE_STRING: {
+            /* For string literals, we need to store them in the data section */
+            /* and return a reference to them */
+            int r = getNextTemp();
+            static int string_counter = 0;
+            
+            /* Generate a unique label for this string */
+            fprintf(output, "    .data\n");
+            fprintf(output, "string_%d: .asciiz \"%s\"\n", string_counter, node->data.string);
+            fprintf(output, "    .text\n");
+            fprintf(output, "    la $t%d, string_%d\n", r, string_counter);
+            string_counter++;
+            return r;
+        }
+
         case NODE_VAR: {
             int off = getVarOffset(node->data.name);
             if (off == -1) {
@@ -483,13 +529,17 @@ static int genExpr(ASTNode* node) {
                     }
                     break;
                 case BINOP_DIV:
-                    // For float division, use floating-point instructions
-                    // Check if operands are already float bit patterns (from casts, arrays, etc.)
-                    // For simplicity, assume division operands are float bit patterns
-                    fprintf(output, "    mtc1 $t%d, $f0\n", a);  /* move to float reg */
-                    fprintf(output, "    mtc1 $t%d, $f2\n", b);  /* move to float reg */
-                    fprintf(output, "    div.s $f4, $f0, $f2\n"); /* float divide - no conversion needed */
-                    fprintf(output, "    mfc1 $t%d, $f4\n", d);  /* move result back */
+                    if (isFloatArith) {
+                        /* Float division - use floating-point instructions */
+                        fprintf(output, "    mtc1 $t%d, $f0\n", a);  /* move to float reg */
+                        fprintf(output, "    mtc1 $t%d, $f2\n", b);  /* move to float reg */
+                        fprintf(output, "    div.s $f4, $f0, $f2\n"); /* float divide */
+                        fprintf(output, "    mfc1 $t%d, $f4\n", d);  /* move result back */
+                    } else {
+                        /* Integer division - use MIPS div instruction and get quotient */
+                        fprintf(output, "    div $t%d, $t%d\n", a, b);  /* a / b */
+                        fprintf(output, "    mflo $t%d\n", d);         /* quotient (truncated toward zero) */
+                    }
                     break;
                 case BINOP_AND: {
                     // Logical AND with short-circuit evaluation
@@ -562,31 +612,86 @@ static int genExpr(ASTNode* node) {
             
             // Calculate address and load value
             int addrReg = getNextTemp();
+            int baseReg = getNextTemp();
             int destReg = getNextTemp();
             fprintf(output, "    sll $t%d, $t%d, 2    # multiply index by 4\n", addrReg, indexReg);
-            // Arrays are at negative offsets, so we subtract the scaled index from the base array address
-            fprintf(output, "    addi $t%d, $fp, %d   # get array base address\n", addrReg+1, arrayOffset);
-            fprintf(output, "    sub $t%d, $t%d, $t%d # subtract scaled index\n", addrReg, addrReg+1, addrReg);
+            
+            if (isArrayVar(node->data.array_access.name)) {
+                // Local array: offset is the array location itself
+                fprintf(output, "    addi $t%d, $fp, %d   # get array base address\n", baseReg, arrayOffset);
+                fprintf(output, "    sub $t%d, $t%d, $t%d # subtract scaled index\n", addrReg, baseReg, addrReg);
+            } else {
+                // Array parameter: offset points to where array address is stored
+                fprintf(output, "    lw $t%d, %d($fp)     # load array address from parameter\n", baseReg, arrayOffset);
+                fprintf(output, "    add $t%d, $t%d, $t%d # add scaled index to array address\n", addrReg, baseReg, addrReg);
+            }
             fprintf(output, "    lw $t%d, 0($t%d)     # load from array[index]\n", destReg, addrReg);
             return destReg;
         }
 
         case NODE_FUNC_CALL: {
-            /* Load args (up to 4) into $a0-$a3 from left to right */
+            /* Handle built-in I/O functions with syscalls */
+            if (strcmp(node->data.func_call.name, "input") == 0) {
+                /* input() - read integer from user */
+                fprintf(output, "    li $v0, 5      # syscall for read_int\n");
+                fprintf(output, "    syscall\n");
+                int dest = getNextTemp();
+                fprintf(output, "    move $t%d, $v0\n", dest);
+                return dest;
+            }
+            else if (strcmp(node->data.func_call.name, "output") == 0) {
+                /* output(value) - print integer */
+                ASTNode* arg = node->data.func_call.args;
+                if (arg) {
+                    ASTNode* cur = (arg->type == NODE_ARG_LIST) ? arg->data.list.item : arg;
+                    int r = genExpr(cur);
+                    fprintf(output, "    move $a0, $t%d\n", r);
+                    fprintf(output, "    li $v0, 1      # syscall for print_int\n");
+                    fprintf(output, "    syscall\n");
+                    /* Print newline after each number for readability */
+                    fprintf(output, "    la $a0, newline\n");
+                    fprintf(output, "    li $v0, 4      # syscall for print_string\n");
+                    fprintf(output, "    syscall\n");
+                }
+                int dest = getNextTemp();
+                fprintf(output, "    li $t%d, 0     # output returns void (0)\n", dest);
+                return dest;
+            }
+            else if (strcmp(node->data.func_call.name, "outputString") == 0) {
+                /* outputString(string) - print string */
+                ASTNode* arg = node->data.func_call.args;
+                if (arg) {
+                    ASTNode* cur = (arg->type == NODE_ARG_LIST) ? arg->data.list.item : arg;
+                    int r = genExpr(cur);
+                    fprintf(output, "    move $a0, $t%d\n", r);
+                    fprintf(output, "    li $v0, 4      # syscall for print_string\n");
+                    fprintf(output, "    syscall\n");
+                }
+                int dest = getNextTemp();
+                fprintf(output, "    li $t%d, 0     # outputString returns void (0)\n", dest);
+                return dest;
+            }
+            
+            /* Regular user-defined function calls */
+            /* Collect all arguments by properly handling nested ARG_LIST structure */
             ASTNode* arg = node->data.func_call.args;
-            int argNum = 0;
+            int argRegs[4]; /* Store temp registers for up to 4 arguments */
+            int numArgs = 0;
 
-            /* Accept either a linked NODE_ARG_LIST chain or a single expr */
-            while (arg && argNum < 4) {
-                ASTNode* cur = (arg->type == NODE_ARG_LIST) ? arg->data.list.item : arg;
-                int r = genExpr(cur);
-                fprintf(output, "    move $a%d, $t%d\n", argNum, r);
-                argNum++;
-                if (arg->type == NODE_ARG_LIST) arg = arg->data.list.next;
-                else break;
+            /* Collect all arguments recursively */
+            collectArgumentsRecursive(arg, argRegs, &numArgs);
+
+            /* Move temp registers to argument registers in order */
+            for (int i = 0; i < numArgs; i++) {
+                fprintf(output, "    move $a%d, $t%d\n", i, argRegs[i]);
             }
 
-            fprintf(output, "    jal %s\n", node->data.func_call.name);
+            /* Add _func suffix to avoid MIPS instruction conflicts, except for main */
+            if (strcmp(node->data.func_call.name, "main") == 0) {
+                fprintf(output, "    jal %s\n", node->data.func_call.name);
+            } else {
+                fprintf(output, "    jal %s_func\n", node->data.func_call.name);
+            }
 
             /* All functions return via $v0 (bit pattern for floats) */
             int dest = getNextTemp();
@@ -598,6 +703,28 @@ static int genExpr(ASTNode* node) {
             /* INIT_LIST should not be processed as standalone expression */
             fprintf(stderr, "Error: NODE_INIT_LIST should not be processed as expression\n");
             exit(1);
+
+        case NODE_ARG_LIST:
+            /* ARG_LIST should not be processed as standalone expression */
+            fprintf(stderr, "DEBUG: NODE_ARG_LIST encountered in genExpr\n");
+            fprintf(stderr, "       This indicates a problem in AST structure\n");
+            
+            /* Try to process the first item in the list as a workaround */
+            if (node->data.list.item) {
+                fprintf(stderr, "       Processing first item in arg list as workaround\n");
+                return genExpr(node->data.list.item);
+            } else {
+                fprintf(stderr, "       Empty arg list - returning 0\n");
+                return 0;
+            }
+            break;
+
+        case NODE_BLOCK:
+            /* NODE_BLOCK should not be processed as expression, treat as statement */
+            printf("DEBUG: NODE_BLOCK found in genExpr(), converting to statement\n");
+            fflush(stdout);
+            genStmt(node);
+            return 0; /* Return dummy value */
 
         default:
             fprintf(stderr, "Unsupported expression node type: %d\n", node->type);
@@ -745,9 +872,18 @@ static void genStmt(ASTNode* node) {
             
             // Calculate address: base - (index * 4) for negative offset arrays
             int addrReg = getNextTemp();
+            int baseReg = getNextTemp();
             fprintf(output, "    sll $t%d, $t%d, 2    # multiply index by 4\n", addrReg, indexReg);
-            fprintf(output, "    addi $t%d, $fp, %d   # get array base address\n", addrReg+1, arrayOffset);
-            fprintf(output, "    sub $t%d, $t%d, $t%d # subtract scaled index\n", addrReg, addrReg+1, addrReg);
+            
+            if (isArrayVar(node->data.array_assign.name)) {
+                // Local array: offset is the array location itself
+                fprintf(output, "    addi $t%d, $fp, %d   # get array base address\n", baseReg, arrayOffset);
+                fprintf(output, "    sub $t%d, $t%d, $t%d # subtract scaled index\n", addrReg, baseReg, addrReg);
+            } else {
+                // Array parameter: offset points to where array address is stored
+                fprintf(output, "    lw $t%d, %d($fp)     # load array address from parameter\n", baseReg, arrayOffset);
+                fprintf(output, "    add $t%d, $t%d, $t%d # add scaled index to array address\n", addrReg, baseReg, addrReg);
+            }
             fprintf(output, "    sw $t%d, 0($t%d)     # store to array[index]\n", valueReg, addrReg);
             break;
         }
@@ -860,6 +996,18 @@ static void genStmt(ASTNode* node) {
             genStmt(node->data.stmtlist.next);
             break;
 
+        case NODE_BLOCK:
+            /* NODE_BLOCK uses same structure as NODE_STMT_LIST */
+            genStmt(node->data.stmtlist.stmt);
+            genStmt(node->data.stmtlist.next);
+            break;
+
+        case NODE_FUNC_CALL: {
+            /* Handle function calls as statements (e.g., output(x);) */
+            genExpr(node);  // Reuse the expression handler which has syscall support
+            break;
+        }
+
         default:
             /* unhandled statement kind (arrays, etc.) */
             break;
@@ -870,8 +1018,12 @@ static void genStmt(ASTNode* node) {
  * FUNCTION DECLARATION HANDLING
  * ============================================================ */
 static void genFunc(ASTNode* func) {
-    /* Label == function name; make 'main' visible from outside */
-    fprintf(output, "\n%s:\n", func->data.func_decl.name);
+    /* Label == function name; make 'main' visible from outside, add _func suffix to avoid MIPS instruction conflicts */
+    if (strcmp(func->data.func_decl.name, "main") == 0) {
+        fprintf(output, "\n%s:\n", func->data.func_decl.name);
+    } else {
+        fprintf(output, "\n%s_func:\n", func->data.func_decl.name);
+    }
 
     /* Prologue: save $fp/$ra, set new frame pointer */
     fprintf(output, "    addi $sp, $sp, -8\n");
@@ -885,14 +1037,20 @@ static void genFunc(ASTNode* func) {
     /* Count parameters first */
     ASTNode* p = func->data.func_decl.params;
     int paramCount = 0;
-    ASTNode* temp = p;
-    while (temp) {
-        ASTNode* cur = (temp->type == NODE_PARAM_LIST) ? temp->data.list.item : temp;
-        if (cur && cur->type == NODE_PARAM) {
+    
+    /* Helper function to recursively count parameters */
+    void countParams(ASTNode* paramNode) {
+        if (!paramNode) return;
+        
+        if (paramNode->type == NODE_PARAM) {
             paramCount++;
+        } else if (paramNode->type == NODE_PARAM_LIST) {
+            countParams(paramNode->data.list.item);
+            countParams(paramNode->data.list.next);
         }
-        if (temp->type == NODE_PARAM_LIST) temp = temp->data.list.next; else break;
     }
+    
+    countParams(p);
 
     /* Allocate stack space for parameters and any local arrays */
     currentParamBytes = paramCount * 4;
@@ -904,17 +1062,24 @@ static void genFunc(ASTNode* func) {
     /* Parameters: add to scope and store $aN into their negative offsets */
     p = func->data.func_decl.params;
     int argN = 0;
-    while (p) {
-        ASTNode* cur = (p->type == NODE_PARAM_LIST) ? p->data.list.item : p;
-        if (cur && cur->type == NODE_PARAM) {
-            char* pname = cur->data.param.name;
-            addParameter(pname, cur->data.param.type);
-            int off = getVarOffset(pname); /* now negative (-4, -8, ...) */
-            fprintf(output, "    sw $a%d, %d($fp)\n", argN, off);
-            argN++;
+    
+    /* Helper function to recursively process parameters */
+    void processParams(ASTNode* paramNode, int* argIndex) {
+        if (!paramNode) return;
+        
+        if (paramNode->type == NODE_PARAM) {
+            char* pname = paramNode->data.param.name;
+            addParameter(pname, paramNode->data.param.type);
+            int off = getVarOffset(pname);
+            fprintf(output, "    sw $a%d, %d($fp)\n", *argIndex, off);
+            (*argIndex)++;
+        } else if (paramNode->type == NODE_PARAM_LIST) {
+            processParams(paramNode->data.list.item, argIndex);
+            processParams(paramNode->data.list.next, argIndex);
         }
-        if (p->type == NODE_PARAM_LIST) p = p->data.list.next; else break;
     }
+    
+    processParams(p, &argN);
 
     /* Update local offset to start after parameters */
     extern void adjustLocalOffsetAfterParams(int paramBytes);

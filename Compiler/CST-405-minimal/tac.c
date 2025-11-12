@@ -119,6 +119,12 @@ char* generateTACExpr(ASTNode* node) {
             return strdup(node->data.name);
         case NODE_BOOL:
             return strdup(node->data.boolean ? "1" : "0");
+        case NODE_STRING: {
+            /* For strings, return the string literal as is (with quotes) */
+            char* temp = malloc(strlen(node->data.string) + 3);
+            sprintf(temp, "\"%s\"", node->data.string);
+            return temp;
+        }
 
         case NODE_BINOP: {
             char* left = generateTACExpr(node->data.binop.left);

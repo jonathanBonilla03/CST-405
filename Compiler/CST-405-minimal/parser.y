@@ -27,9 +27,9 @@ ASTNode* root = NULL;
 /* === Tokens === */
 %token <num> NUM
 %token <floats> FLOAT_LITERAL
-%token <str> ID
+%token <str> ID STRING_LITERAL
 %token <boolean> BOOL_LITERAL
-%token INT FLOAT BOOL PRINT IF ELSE RETURN VOID
+%token INT FLOAT BOOL STRING PRINT IF ELSE RETURN VOID
 %token EQ NE LE GE LT GT
 %token AND OR NOT EXPONENT
 
@@ -71,12 +71,16 @@ func_decl:
     | type ID '(' ')' '{' stmt_list '}' {
         $$ = createFuncDecl($1, $2, NULL, $6);
     }
+    | type ID '(' VOID ')' '{' stmt_list '}' {
+        $$ = createFuncDecl($1, $2, NULL, $7);
+    }
     ;
 
 type:
       INT     { $$ = "int"; }
     | FLOAT   { $$ = "float"; }
     | BOOL    { $$ = "bool"; }
+    | STRING  { $$ = "string"; }
     | VOID    { $$ = "void"; }
     ;
 
@@ -87,6 +91,7 @@ param_list:
 
 param:
     type ID                     { $$ = createParam($1, $2); }
+    | type ID '[' ']'           { $$ = createArrayParam($1, $2); }
     ;
 
 stmt_list:
@@ -100,6 +105,7 @@ stmt:
     | print_stmt
     | if_stmt
     | return_stmt
+    | expr ';'                  { $$ = $1; }  /* Allow function calls as statements */
     ;
 
 return_stmt:
@@ -117,13 +123,16 @@ block:
 decl:
       INT ID ';'                { $$ = createDecl("int", $2); free($2); }
     | FLOAT ID ';'              { $$ = createDecl("float", $2); free($2); }
+    | BOOL ID ';'               { $$ = createDecl("bool", $2); free($2); }
+    | STRING ID ';'             { $$ = createDecl("string", $2); free($2); }
     | INT ID '=' expr ';'       { $$ = createDeclInit("int", $2, $4); free($2); }
     | FLOAT ID '=' expr ';'     { $$ = createDeclInit("float", $2, $4); free($2); }
+    | BOOL ID '=' expr ';'      { $$ = createDeclInit("bool", $2, $4); free($2); }
+    | STRING ID '=' expr ';'    { $$ = createDeclInit("string", $2, $4); free($2); }
     | INT ID '[' NUM ']' ';'    { $$ = createArrayDecl("int", $2, $4); free($2); }
     | FLOAT ID '[' NUM ']' ';'  { $$ = createArrayDecl("float", $2, $4); free($2); }
     | INT ID '[' NUM ']' '=' '{' init_list '}' ';'    { $$ = createArrayInitDecl("int", $2, $4, $8); free($2); }
     | FLOAT ID '[' NUM ']' '=' '{' init_list '}' ';'  { $$ = createArrayInitDecl("float", $2, $4, $8); free($2); }
-    | BOOL ID ';'               { $$ = createDecl("bool", $2); free($2); }
     ;
 
 /* --- Assignments --- */
@@ -156,6 +165,7 @@ expr:
       NUM                       { $$ = createNum($1); }
     | FLOAT_LITERAL             { $$ = createFloat($1); }
     | BOOL_LITERAL              { $$ = createBool($1); }
+    | STRING_LITERAL            { $$ = createString($1); free($1); }
     | ID                        { $$ = createVar($1); free($1); }
     | ID '[' expr ']'           { $$ = createArrayAccess($1, $3); free($1); }
     | '(' expr ')'              { $$ = $2; }
