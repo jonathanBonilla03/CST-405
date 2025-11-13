@@ -125,15 +125,15 @@ void printCalculation(int a, int b) {
     sum = add(a, b);
     product = multiply(a, b);
 
-    output(sum);
-    output(product);
+    print(sum);
+    print(product);
 }
 
 /* Function: Void function with array parameter */
 void printArraySum(int data[], int length) {
     int total;
     total = sumArray(data, length);
-    output(total);
+    print(total);
 }
 
 /* Main function: Demonstrates all features */
@@ -155,26 +155,26 @@ void main(void) {
     z = input();
 
     /* Test basic arithmetic function calls */
-    output(add(x, y));
-    output(subtract(x, y));
-    output(multiply(x, y));
-    output(divide(x, y));
+    print(add(x, y));
+    print(subtract(x, y));
+    print(multiply(x, y));
+    print(divide(x, y));
 
     /* Test complex expression function */
     result = complexExpression(x, y, z);
-    output(result);
+    print(result);
 
     /* Test function composition */
     result = addAndMultiply(x, y, z);
-    output(result);
+    print(result);
 
     /* Test nested function calls */
     result = nestedCalls(x, y, z, x);
-    output(result);
+    print(result);
 
     /* Test average calculation */
     result = average(x, y, z);
-    output(result);
+    print(result);
 
     /* Initialize array with complex expressions */
     numbers[0] = add(x, y);
@@ -185,35 +185,35 @@ void main(void) {
 
     /* Test array functions */
     arraySum = sumArray(numbers, 5);
-    output(arraySum);
+    print(arraySum);
 
     arrayAvg = arrayAverage(numbers, 5);
-    output(arrayAvg);
+    print(arrayAvg);
 
     /* Test polynomial: 2x^2 + 3x + 5 */
     poly = polynomial(2, x, 3, 5);
-    output(poly);
+    print(poly);
 
     /* Test chain operations */
     chain = chainOperations(x);
-    output(chain);
+    print(chain);
 
     /* Test deeply nested calls */
     deep = deepNesting(x, y, z);
-    output(deep);
+    print(deep);
 
     /* Test all operators in complex expression */
     result = allOperators(x, y, z, 10);
-    output(result);
+    print(result);
 
     /* Test void functions */
     printCalculation(x, y);
     printArraySum(numbers, 5);
 
     /* Test multiple nested calls in single statement */
-    output(add(multiply(x, y), divide(subtract(z, x), add(y, 2))));
+    print(add(multiply(x, y), divide(subtract(z, x), add(y, 2))));
 
     /* Test expressions with literal values and function calls */
     result = add(multiply(x, 5), subtract(y, 10)) + divide(z, 2);
-    output(result);
+    print(result);
 }

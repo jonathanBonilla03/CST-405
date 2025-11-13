@@ -732,18 +732,76 @@ static int genExpr(ASTNode* node) {
                 return dest;
             }
             else if (strcmp(node->data.func_call.name, "output") == 0) {
-                /* output(value) - print integer */
+                /* output(value) - print value without newline (supports strings, chars, floats, ints) */
                 ASTNode* arg = node->data.func_call.args;
                 if (arg) {
                     ASTNode* cur = (arg->type == NODE_ARG_LIST) ? arg->data.list.item : arg;
                     int r = genExpr(cur);
-                    fprintf(output, "    move $a0, $t%d\n", r);
-                    fprintf(output, "    li $v0, 1      # syscall for print_int\n");
-                    fprintf(output, "    syscall\n");
-                    /* Print newline after each number for readability */
-                    fprintf(output, "    la $a0, newline\n");
-                    fprintf(output, "    li $v0, 4      # syscall for print_string\n");
-                    fprintf(output, "    syscall\n");
+                    
+                    /* Determine the type of expression: string, char, float, or int */
+                    int isFloat = 0;
+                    int isString = 0;
+                    int isChar = 0;
+                    
+                    ASTNode* e = cur;
+                    /* Check if expression is a string literal */
+                    if (e && e->type == NODE_STRING) {
+                        isString = 1;
+                    }
+                    /* Check if expression is a character literal */
+                    else if (e && e->type == NODE_CHAR) {
+                        isChar = 1;
+                    }
+                    /* Check if expression is a float */
+                    else if (e) {
+                        if (e->type == NODE_FLOAT) isFloat = 1;
+                        else if (e->type == NODE_CAST && e->data.cast.targetType && strcmp(e->data.cast.targetType, "float") == 0) isFloat = 1;
+                        else if (e->type == NODE_BINOP && e->data.binop.op == BINOP_DIV) isFloat = 1;
+                        else if (e->type == NODE_VAR) {
+                            /* lookup symbol type */
+                            Symbol* s = lookupSymbol(e->data.name);
+                            if (s && s->type && strcmp(s->type, "float") == 0) isFloat = 1;
+                            else if (s && s->type && strcmp(s->type, "string") == 0) isString = 1;
+                            else if (s && s->type && strcmp(s->type, "char") == 0) isChar = 1;
+                        } else if (e->type == NODE_ARRAY_ACCESS) {
+                            if (isArrayVar(e->data.array_access.name)) {
+                                Symbol* s = lookupSymbol(e->data.array_access.name);
+                                if (s && s->type && strcmp(s->type, "float") == 0) isFloat = 1;
+                                else if (s && s->type && strcmp(s->type, "string") == 0) isString = 1;
+                                else if (s && s->type && strcmp(s->type, "char") == 0) isChar = 1;
+                            }
+                        } else if (e->type == NODE_FUNC_CALL) {
+                            Symbol* s = lookupSymbol(e->data.func_call.name);
+                            if (s && s->type && strcmp(s->type, "float") == 0) isFloat = 1;
+                            else if (s && s->type && strcmp(s->type, "string") == 0) isString = 1;
+                            else if (s && s->type && strcmp(s->type, "char") == 0) isChar = 1;
+                        }
+                    }
+
+                    if (isString) {
+                        /* For strings, the register contains the address of the string */
+                        fprintf(output, "    move $a0, $t%d\n", r);
+                        fprintf(output, "    li $v0, 4      # syscall for print_string\n");
+                        fprintf(output, "    syscall\n");
+                        /* No newline - output continues on same line */
+                    } else if (isChar) {
+                        /* For characters, print as character */
+                        fprintf(output, "    move $a0, $t%d\n", r);
+                        fprintf(output, "    li $v0, 11     # syscall for print_char\n");
+                        fprintf(output, "    syscall\n");
+                        /* No newline - output continues on same line */
+                    } else if (isFloat) {
+                        /* move integer-bit-pattern into $f12 and call float print */
+                        fprintf(output, "    mtc1 $t%d, $f12\n", r);
+                        fprintf(output, "    li $v0, 2      # syscall for print_float\n");
+                        fprintf(output, "    syscall\n");
+                        /* No newline - output continues on same line */
+                    } else {
+                        fprintf(output, "    move $a0, $t%d\n", r);
+                        fprintf(output, "    li $v0, 1      # syscall for print_int\n");
+                        fprintf(output, "    syscall\n");
+                        /* No newline - output continues on same line */
+                    }
                 }
                 int dest = getNextTemp();
                 fprintf(output, "    li $t%d, 0     # output returns void (0)\n", dest);
