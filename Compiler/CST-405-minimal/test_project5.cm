@@ -23,7 +23,7 @@ int main() {
     if (!(a > 3)) {
         print("if-then-else: a < 3 (true branch), NOT expected output");
     } else {
-        print("if-then-else: !(a < 3) is false -> else branch, expected output");
+        print("if-then-else: !(a > 3) is false -> else branch, expected output");
         // Expected Output
     }
 
