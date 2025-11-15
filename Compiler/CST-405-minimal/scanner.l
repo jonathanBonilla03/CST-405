@@ -64,6 +64,7 @@ whitespace  [ \t\r\n]+
 "print"     { return PRINT; }
 "return"    { return RETURN; }
 "void"      { return VOID; }
+"while"     { return WHILE; }
 "retry"     { return RETRY; }
 "break"     { return BREAK; }
 "backoff"   { return BACKOFF; }

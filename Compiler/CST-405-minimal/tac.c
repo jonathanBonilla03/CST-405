@@ -276,6 +276,19 @@ void generateTAC(ASTNode* node) {
             break;
         }
 
+        case NODE_WHILE: {
+            char* label_start = newTACLabel();
+            char* label_end = newTACLabel();
+            
+            appendTAC(createTAC(TAC_LABEL, NULL, NULL, label_start));
+            char* cond = generateTACExpr(node->data.whilestmt.cond);
+            appendTAC(createTAC(TAC_IFZ, cond, NULL, label_end));
+            generateTAC(node->data.whilestmt.body);
+            appendTAC(createTAC(TAC_JUMP, NULL, NULL, label_start));
+            appendTAC(createTAC(TAC_LABEL, NULL, NULL, label_end));
+            break;
+        }
+
         case NODE_PRINT: {
             char* expr = generateTACExpr(node->data.expr);
             appendTAC(createTAC(TAC_PRINT, expr, NULL, NULL));

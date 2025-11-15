@@ -31,7 +31,7 @@ ASTNode* root = NULL;
 %token <str> ID STRING_LITERAL
 %token <character> CHAR_LITERAL
 %token <boolean> BOOL_LITERAL
-%token INT FLOAT BOOL CHAR STRING PRINT IF ELSE RETURN VOID RETRY BACKOFF ONFAIL BREAK
+%token INT FLOAT BOOL CHAR STRING PRINT IF ELSE RETURN VOID WHILE RETRY BACKOFF ONFAIL BREAK
 %token EQ NE LE GE LT GT
 %token AND OR NOT EXPONENT
 
@@ -50,7 +50,7 @@ ASTNode* root = NULL;
 %expect 3
 
 /* === Non-terminal types === */
-%type <node> program func_list stmt_list stmt decl assign expr print_stmt if_stmt block func_decl param_list param arg_list return_stmt break_stmt init_list retry_stmt
+%type <node> program func_list stmt_list stmt decl assign expr print_stmt if_stmt while_stmt block func_decl param_list param arg_list return_stmt break_stmt init_list retry_stmt
 %type <str> type
 
 %%
@@ -85,6 +85,11 @@ type:
     | CHAR    { $$ = "char"; }
     | STRING  { $$ = "string"; }
     | VOID    { $$ = "void"; }
+    | INT '[' ']'     { $$ = "int[]"; }
+    | FLOAT '[' ']'   { $$ = "float[]"; }
+    | BOOL '[' ']'    { $$ = "bool[]"; }
+    | CHAR '[' ']'    { $$ = "char[]"; }
+    | STRING '[' ']'  { $$ = "string[]"; }
     ;
 
 param_list:
@@ -107,6 +112,7 @@ stmt:
     | assign
     | print_stmt
     | if_stmt
+    | while_stmt
     | return_stmt
     | retry_stmt
     | break_stmt
@@ -166,6 +172,11 @@ if_stmt:
       IF '(' expr ')' block     { $$ = createIf($3, $5, NULL); }
     | IF '(' expr ')' block ELSE block
                                 { $$ = createIf($3, $5, $7); }
+    ;
+
+/* --- While statements --- */
+while_stmt:
+      WHILE '(' expr ')' block  { $$ = createWhile($3, $5); }
     ;
 
 /* --- Retry statements --- */

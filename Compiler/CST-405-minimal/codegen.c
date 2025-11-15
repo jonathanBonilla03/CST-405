@@ -715,7 +715,7 @@ static int genExpr(ASTNode* node) {
             } else {
                 // Array parameter: offset points to where array address is stored
                 fprintf(output, "    lw $t%d, %d($fp)     # load array address from parameter\n", baseReg, arrayOffset);
-                fprintf(output, "    add $t%d, $t%d, $t%d # add scaled index to array address\n", addrReg, baseReg, addrReg);
+                fprintf(output, "    sub $t%d, $t%d, $t%d # subtract scaled index for consistency\n", addrReg, baseReg, addrReg);
             }
             fprintf(output, "    lw $t%d, 0($t%d)     # load from array[index]\n", destReg, addrReg);
             return destReg;
@@ -1047,6 +1047,28 @@ static void genStmt(ASTNode* node) {
         }
 
         case NODE_ASSIGN: {
+            ASTNode* rhs = node->data.assign.value;
+            
+            /* Check if this is an array assignment from function call */
+            if (isArrayVar(node->data.assign.var) && rhs && rhs->type == NODE_FUNC_CALL) {
+                /* For array assignments from function calls that return arrays,
+                   we assume the function modifies the input array in-place.
+                   Since arrays are passed by reference, we just call the function
+                   and don't need to copy anything back. */
+                Symbol* funcSym = lookupSymbol(rhs->data.func_call.name);
+                
+                /* Check if function returns an array type */
+                if (funcSym && funcSym->type && 
+                    (strstr(funcSym->type, "[]") != NULL || 
+                     strcmp(funcSym->type, "int[]") == 0 || strcmp(funcSym->type, "float[]") == 0)) {
+                    
+                    /* Just generate the function call - the array is modified in-place */
+                    genExpr(rhs);
+                    break;
+                }
+            }
+            
+            /* Regular assignment */
             int r   = genExpr(node->data.assign.value);
             int off = getVarOffset(node->data.assign.var);
             if (off == -1) {
@@ -1060,7 +1082,6 @@ static void genStmt(ASTNode* node) {
                function calls whose symbol return type is float, binary division,
                casts to float, exponentiation with float operands, or any
                expression containing float casts. */
-            ASTNode* rhs = node->data.assign.value;
             int looksFloat = 0;
             if (rhs) {
                 if (rhs->type == NODE_BINOP && rhs->data.binop.op == BINOP_DIV) looksFloat = 1;
@@ -1109,20 +1130,97 @@ static void genStmt(ASTNode* node) {
             } else {
                 // Array parameter: offset points to where array address is stored
                 fprintf(output, "    lw $t%d, %d($fp)     # load array address from parameter\n", baseReg, arrayOffset);
-                fprintf(output, "    add $t%d, $t%d, $t%d # add scaled index to array address\n", addrReg, baseReg, addrReg);
+                fprintf(output, "    sub $t%d, $t%d, $t%d # subtract scaled index for consistency\n", addrReg, baseReg, addrReg);
             }
             fprintf(output, "    sw $t%d, 0($t%d)     # store to array[index]\n", valueReg, addrReg);
             break;
         }
 
         case NODE_PRINT: {
+            /* Check if this is an array variable being printed */
+            int isArrayPrint = 0;
+            ASTNode* e = node->data.expr;
+            if (e && e->type == NODE_VAR && isArrayVar(e->data.name)) {
+                isArrayPrint = 1;
+            }
+            
+            if (isArrayPrint) {
+                /* Print array in format [elem1, elem2, elem3, ...] */
+                char* arrayName = e->data.name;
+                int arraySize = getArraySize(arrayName);
+                Symbol* s = lookupSymbol(arrayName);
+                int isFloatArray = (s && s->type && strcmp(s->type, "float") == 0);
+                
+                /* Print opening bracket */
+                fprintf(output, "    li $a0, 91\n");  /* ASCII for '[' */
+                fprintf(output, "    li $v0, 11\n    syscall\n");
+                
+                /* Loop through array elements */
+                char* loopLabel = newLabel("array_print_loop");
+                char* endLabel = newLabel("array_print_end");
+                
+                /* Initialize loop counter and allocate registers properly */
+                int counterReg = getNextTemp();
+                int sizeReg = getNextTemp();
+                int elemReg = getNextTemp();
+                int offsetReg = getNextTemp();
+                int baseReg = getNextTemp();
+                
+                fprintf(output, "    li $t%d, 0\n", counterReg);
+                fprintf(output, "    li $t%d, %d\n", sizeReg, arraySize);
+                
+                fprintf(output, "%s:\n", loopLabel);
+                /* Check if we've reached the end */
+                fprintf(output, "    bge $t%d, $t%d, %s\n", counterReg, sizeReg, endLabel);
+                
+                /* Load array element */
+                int arrayOffset = getVarOffset(arrayName);
+                fprintf(output, "    addi $t%d, $fp, %d\n", baseReg, arrayOffset);  /* get array base address */
+                fprintf(output, "    sll $t%d, $t%d, 2\n", offsetReg, counterReg);  /* multiply by 4 for word offset */
+                fprintf(output, "    sub $t%d, $t%d, $t%d\n", elemReg, baseReg, offsetReg);  /* subtract for negative offset */
+                fprintf(output, "    lw $t%d, 0($t%d)\n", elemReg, elemReg);
+                
+                /* Print element based on type */
+                if (isFloatArray) {
+                    fprintf(output, "    mtc1 $t%d, $f12\n", elemReg);
+                    fprintf(output, "    li $v0, 2\n    syscall\n");
+                } else {
+                    fprintf(output, "    move $a0, $t%d\n", elemReg);
+                    fprintf(output, "    li $v0, 1\n    syscall\n");
+                }
+                
+                /* Print comma and space if not last element */
+                int tempReg = getNextTemp();
+                fprintf(output, "    addi $t%d, $t%d, 1\n", tempReg, counterReg);
+                fprintf(output, "    bge $t%d, $t%d, skip_comma_%s\n", tempReg, sizeReg, loopLabel);
+                fprintf(output, "    li $a0, 44\n");  /* ASCII for ',' */
+                fprintf(output, "    li $v0, 11\n    syscall\n");
+                fprintf(output, "    li $a0, 32\n");  /* ASCII for ' ' */
+                fprintf(output, "    li $v0, 11\n    syscall\n");
+                fprintf(output, "skip_comma_%s:\n", loopLabel);
+                
+                /* Increment counter and loop */
+                fprintf(output, "    addi $t%d, $t%d, 1\n", counterReg, counterReg);
+                fprintf(output, "    j %s\n", loopLabel);
+                
+                fprintf(output, "%s:\n", endLabel);
+                /* Print closing bracket */
+                fprintf(output, "    li $a0, 93\n");  /* ASCII for ']' */
+                fprintf(output, "    li $v0, 11\n    syscall\n");
+                /* Print newline */
+                fprintf(output, "    li $a0, 10\n    li $v0, 11\n    syscall\n");
+                
+                free(loopLabel);
+                free(endLabel);
+                break;
+            }
+            
             int r = genExpr(node->data.expr);
             /* Determine the type of expression: string, char, float, or int */
             int isFloat = 0;
             int isString = 0;
             int isChar = 0;
             
-            ASTNode* e = node->data.expr;
             /* Check if expression is a string literal */
             if (e && e->type == NODE_STRING) {
                 isString = 1;
@@ -1198,6 +1296,22 @@ static void genStmt(ASTNode* node) {
 
             fprintf(output, "%s:\n", endLbl);
             free(elseLbl); free(endLbl);
+            break;
+        }
+
+        case NODE_WHILE: {
+            char* startLbl = newLabel("Lstart");
+            char* endLbl = newLabel("Lend");
+
+            fprintf(output, "%s:\n", startLbl);
+            int c = genExpr(node->data.whilestmt.cond);
+            fprintf(output, "    beq $t%d, $zero, %s\n", c, endLbl);
+
+            genStmt(node->data.whilestmt.body);
+            fprintf(output, "    j %s\n", startLbl);
+
+            fprintf(output, "%s:\n", endLbl);
+            free(startLbl); free(endLbl);
             break;
         }
 

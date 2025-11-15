@@ -257,11 +257,19 @@ ASTNode* createCast(char* targetType, ASTNode* expr) {
 }
 
 ASTNode* createIf(ASTNode* cond, ASTNode* thenBr, ASTNode* elseBr) {
-    ASTNode* node = ast_alloc(sizeof(ASTNode));
+    ASTNode* node = (ASTNode*)malloc(sizeof(ASTNode));
     node->type = NODE_IF;
     node->data.ifstmt.cond = cond;
     node->data.ifstmt.thenBr = thenBr;
     node->data.ifstmt.elseBr = elseBr;
+    return node;
+}
+
+ASTNode* createWhile(ASTNode* cond, ASTNode* body) {
+    ASTNode* node = (ASTNode*)malloc(sizeof(ASTNode));
+    node->type = NODE_WHILE;
+    node->data.whilestmt.cond = cond;
+    node->data.whilestmt.body = body;
     return node;
 }
 

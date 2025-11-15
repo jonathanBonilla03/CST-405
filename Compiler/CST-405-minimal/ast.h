@@ -86,6 +86,7 @@ typedef enum {
     NODE_RELOP,
     NODE_CAST,
     NODE_IF,
+    NODE_WHILE,
     NODE_FUNC_DECL,    // Function declaration
     NODE_FUNC_CALL,    // Function call (in expressions)
     NODE_PARAM,        // Parameter declaration
@@ -122,7 +123,16 @@ typedef struct ASTNode {
         struct { char* type; char* name; struct ASTNode* value; } decl_init;
         struct ASTNode* expr;  // For print
         struct { struct ASTNode* stmt; struct ASTNode* next; } stmtlist;
-        struct { struct ASTNode* cond; struct ASTNode* thenBr; struct ASTNode* elseBr; } ifstmt;
+        struct {
+            struct ASTNode* cond;
+            struct ASTNode* thenBr;
+            struct ASTNode* elseBr;
+        } ifstmt;
+        
+        struct {
+            struct ASTNode* cond;
+            struct ASTNode* body;
+        } whilestmt;
 
         // --- Arrays ---
         struct { char* type; char* name; int size; } array_decl;
@@ -193,6 +203,7 @@ ASTNode* createInitList(ASTNode* expr, ASTNode* next);
 ASTNode* createRelop(RelopKind op, ASTNode* left, ASTNode* right);
 ASTNode* createCast(char* targetType, ASTNode* expr);
 ASTNode* createIf(ASTNode* cond, ASTNode* thenBr, ASTNode* elseBr);
+ASTNode* createWhile(ASTNode* cond, ASTNode* body);
 ASTNode* createFuncDecl(char* returnType, char* name,
                         ASTNode* params, ASTNode* body);
 ASTNode* createFuncCall(char* name, ASTNode* args);

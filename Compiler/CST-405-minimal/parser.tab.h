@@ -55,22 +55,23 @@
      ELSE = 271,
      RETURN = 272,
      VOID = 273,
-     RETRY = 274,
-     BACKOFF = 275,
-     ONFAIL = 276,
-     BREAK = 277,
-     EQ = 278,
-     NE = 279,
-     LE = 280,
-     GE = 281,
-     LT = 282,
-     GT = 283,
-     AND = 284,
-     OR = 285,
-     NOT = 286,
-     EXPONENT = 287,
-     CAST = 288,
-     UMINUS = 289
+     WHILE = 274,
+     RETRY = 275,
+     BACKOFF = 276,
+     ONFAIL = 277,
+     BREAK = 278,
+     EQ = 279,
+     NE = 280,
+     LE = 281,
+     GE = 282,
+     LT = 283,
+     GT = 284,
+     AND = 285,
+     OR = 286,
+     NOT = 287,
+     EXPONENT = 288,
+     CAST = 289,
+     UMINUS = 290
    };
 #endif
 
@@ -93,7 +94,7 @@ typedef union YYSTYPE
 
 
 /* Line 1676 of yacc.c  */
-#line 97 "parser.tab.h"
+#line 98 "parser.tab.h"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
