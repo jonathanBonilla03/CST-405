@@ -1,0 +1,84 @@
+/*
+ * Focused C-Minus Test File - Parameter Passing and Stack Frame Debug
+ * CST-405 Compiler Design
+ *
+ * This file tests parameter passing and stack frame isolation
+ * to debug recursion issues where parameters are being modified.
+ */
+
+/* ========================================
+   SIMPLE NON-RECURSIVE TEST FIRST
+   ======================================== */
+
+int simpleTest(int x) {
+    print("ENTERING_simpleTest");
+    print("Parameter_x_value:");
+    print(x);
+    print("EXITING_simpleTest");
+    return x + 10;
+}
+
+/* ========================================
+   BASIC RECURSION TEST - FACTORIAL
+   ======================================== */
+
+int factorial(int n) {
+    print("FACTORIAL_ENTRY");
+    print("Parameter_n_received:");
+    print(n);
+
+    if (n <= 1) {
+        print("BASE_CASE_detected");
+        print("Returning_value_1");
+        return 1;
+    } else {
+        print("RECURSIVE_CASE_detected");
+        print("Current_n_value:");
+        print(n);
+        print("Calling_factorial_with:");
+        print(n - 1);
+        
+        int temp = factorial(n - 1);
+        
+        print("AFTER_recursive_call");
+        print("Current_n_should_still_be:");
+        print(n);
+        print("Recursive_result_received:");
+        print(temp);
+        
+        int result = n * temp;
+        print("COMPUTATION_n_times_temp:");
+        print(result);
+        return result;
+    }
+}
+
+/* ========================================
+   MAIN FUNCTION - PARAMETER ISOLATION TEST
+   ======================================== */
+
+void main(void) {
+    int result;
+    int testVal;
+
+    /* Test simple function call first */
+    print("MAIN_PROGRAM_START");
+    print("Testing_simple_function_call");
+    testVal = 5;
+    print("Original_testVal:");
+    print(testVal);
+    result = simpleTest(testVal);
+    print("After_simpleTest_testVal:");
+    print(testVal);
+    print("SimpleTest_returned:");
+    print(result);
+
+    /* Test factorial(5) for deeper recursion */
+    print("BEGIN_factorial_test_with_5");
+    result = factorial(5);
+    print("COMPLETED_factorial_5");
+    print("Result_should_be_120:");
+    print(result);
+
+    print("PROGRAM_EXECUTION_COMPLETE");
+}

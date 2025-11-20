@@ -1,0 +1,85 @@
+/*
+ * Memory Debug Test - Stack Corruption Detection
+ * This test isolates the memory corruption issue
+ */
+
+int factorial(int n) {
+    print("FACTORIAL_n:");
+    print(n);
+    
+    if (n <= 1) {
+        print("BASE_returning_1");
+        return 1;
+    } else {
+        int temp = factorial(n - 1);
+        print("AFTER_recursion_n_is:");
+        print(n);
+        print("temp_is:");
+        print(temp);
+        return n * temp;
+    }
+}
+
+void testWithoutArrays(void) {
+    int result;
+    
+    print("TEST_WITHOUT_ARRAYS");
+    result = factorial(5);
+    print("RESULT:");
+    print(result);
+}
+
+void testWithSmallArrays(void) {
+    int smallArray[3];
+    int result;
+    
+    print("TEST_WITH_SMALL_ARRAYS");
+    smallArray[0] = 1;
+    smallArray[1] = 2;
+    smallArray[2] = 3;
+    
+    result = factorial(5);
+    print("RESULT:");
+    print(result);
+}
+
+void testWithLargeArrays(void) {
+    int largeArray[20];
+    int anotherArray[10];
+    int result;
+    int i;
+    
+    print("TEST_WITH_LARGE_ARRAYS");
+    
+    /* Initialize arrays */
+    i = 0;
+    while (i < 20) {
+        largeArray[i] = i;
+        i = i + 1;
+    }
+    
+    i = 0;
+    while (i < 10) {
+        anotherArray[i] = i * 2;
+        i = i + 1;
+    }
+    
+    result = factorial(5);
+    print("RESULT:");
+    print(result);
+}
+
+void main(void) {
+    print("MEMORY_CORRUPTION_DEBUG");
+    
+    /* Test 1: No arrays */
+    testWithoutArrays();
+    
+    /* Test 2: Small arrays */
+    testWithSmallArrays();
+    
+    /* Test 3: Large arrays (should show corruption) */
+    testWithLargeArrays();
+    
+    print("DEBUG_COMPLETE");
+}
