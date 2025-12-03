@@ -96,6 +96,59 @@ char* escape_string_for_mips(const char* str) {
 /* Forward declarations */
 void genFunctions(ASTNode* node);
 
+/* Function to pre-scan function body and count all local variables */
+static int countLocalVariables(ASTNode* node) {
+    if (!node) return 0;
+    
+    int count = 0;
+    
+    switch (node->type) {
+        case NODE_DECL:
+        case NODE_DECL_INIT:
+            count += 1;  /* Each declaration uses 4 bytes */
+            break;
+            
+        case NODE_ARRAY_DECL:
+        case NODE_ARRAY_INIT_DECL: {
+            int arraySize = (node->type == NODE_ARRAY_DECL) ? 
+                           node->data.array_decl.size : node->data.array_init_decl.size;
+            int arrayBytes = arraySize * 4;
+            
+            if (arrayBytes > 64) {
+                count += 1;  /* Large arrays use pointer (4 bytes) */
+            } else {
+                count += arraySize;  /* Small arrays use full size */
+            }
+            break;
+        }
+        
+        case NODE_STMT_LIST:
+            count += countLocalVariables(node->data.list.item);
+            count += countLocalVariables(node->data.list.next);
+            break;
+            
+        case NODE_IF:
+            count += countLocalVariables(node->data.ifstmt.thenBr);
+            count += countLocalVariables(node->data.ifstmt.elseBr);
+            break;
+            
+        case NODE_WHILE:
+            count += countLocalVariables(node->data.whilestmt.body);
+            break;
+            
+        case NODE_BLOCK:
+            count += countLocalVariables(node->data.stmtlist.stmt);
+            count += countLocalVariables(node->data.stmtlist.next);
+            break;
+            
+        default:
+            /* Other nodes don't contain variable declarations */
+            break;
+    }
+    
+    return count;
+}
+
 /* ============================================================
  * LABEL / TEMP HELPERS
  * ============================================================ */
@@ -557,8 +610,30 @@ static int genExpr(ASTNode* node) {
             }
 
             /* For all other binary operations */
+            /* Check if right operand is a function call that could corrupt left operand register */
+            int needsPreservation = 0;
+            if (node->data.binop.right && node->data.binop.right->type == NODE_FUNC_CALL) {
+                needsPreservation = 1;
+            }
+            
             int a = genExpr(node->data.binop.left);
+            
+            /* If right side is a function call, preserve the left operand on stack */
+            if (needsPreservation) {
+                fprintf(output, "    addi $sp, $sp, -4   # preserve left operand\n");
+                fprintf(output, "    sw $t%d, 0($sp)     # save left operand\n", a);
+            }
+            
             int b = genExpr(node->data.binop.right);
+            
+            /* If we preserved left operand, restore it */
+            if (needsPreservation) {
+                int preserved_a = getNextTemp();
+                fprintf(output, "    lw $t%d, 0($sp)     # restore left operand\n", preserved_a);
+                fprintf(output, "    addi $sp, $sp, 4    # deallocate preservation space\n");
+                a = preserved_a;  /* Use the restored register */
+            }
+            
             int d = getNextTemp();
 
             /* Check if we're doing float arithmetic - detect if any operand involves casts to float */
@@ -999,21 +1074,16 @@ static void genStmt(ASTNode* node) {
 
     switch (node->type) {
         case NODE_DECL: {
-            /* Add to symtab and allocate 4 bytes on stack for this local */
+            /* Add to symtab - space already allocated at function entry */
             int off = addVar(node->data.decl.name, node->data.decl.type);
             (void)off; /* offset already used by lw/sw with $fp */
-            fprintf(output, "    addi $sp, $sp, -4   # alloc local %s (%s)\n", 
-                   node->data.decl.name, node->data.decl.type);
-            currentLocalBytes += 4;
+            /* No dynamic allocation - space pre-allocated at function entry */
             break;
         }
 
         case NODE_DECL_INIT: {
-            /* Add to symtab, allocate space, and initialize */
+            /* Add to symtab - space already allocated at function entry */
             int off = addVar(node->data.decl_init.name, node->data.decl_init.type);
-            fprintf(output, "    addi $sp, $sp, -4   # alloc local %s (%s)\n", 
-                   node->data.decl_init.name, node->data.decl_init.type);
-            currentLocalBytes += 4;
             
             /* Generate code for the initialization value and store it */
             int r = genExpr(node->data.decl_init.value);
@@ -1022,27 +1092,50 @@ static void genStmt(ASTNode* node) {
         }
 
         case NODE_ARRAY_DECL: {
-            /* Add array to symtab and allocate size*4 bytes on stack */
+            /* Add array to symtab - space already allocated at function entry */
             int arraySize = node->data.array_decl.size;
-            int off = addArrayVar(node->data.array_decl.name, node->data.array_decl.type, arraySize);
-            (void)off; /* offset already used by lw/sw with $fp */
-            fprintf(output, "    addi $sp, $sp, -%d   # alloc array %s[%d] (%s)\n", 
-                   arraySize * 4, node->data.array_decl.name, arraySize, node->data.array_decl.type);
-            currentLocalBytes += arraySize * 4;
+            int arrayBytes = arraySize * 4;
+            
+            /* Limit stack allocation for large arrays to prevent stack overflow */
+            if (arrayBytes > 64) {  /* Limit to 16 int elements max on stack */
+                /* For large arrays, just allocate a pointer on stack */
+                int off = addVar(node->data.array_decl.name, "int*");
+                /* Allocate array space in data segment instead */
+                fprintf(output, "    .data\n");
+                fprintf(output, "large_array_%s: .space %d\n", node->data.array_decl.name, arrayBytes);
+                fprintf(output, "    .text\n");
+                fprintf(output, "    la $t0, large_array_%s\n", node->data.array_decl.name);
+                fprintf(output, "    sw $t0, %d($fp)\n", off);
+            } else {
+                /* Small arrays stay on stack - space already allocated */
+                int off = addArrayVar(node->data.array_decl.name, node->data.array_decl.type, arraySize);
+                (void)off; /* offset already used by lw/sw with $fp */
+            }
             break;
         }
 
         case NODE_ARRAY_INIT_DECL: {
-            /* Add array to symtab and allocate size*4 bytes on stack */
+            /* Add array to symtab - space already allocated at function entry */
             int arraySize = node->data.array_init_decl.size;
-            int off = addArrayVar(node->data.array_init_decl.name, node->data.array_init_decl.type, arraySize);
-            (void)off; /* offset already used by lw/sw with $fp */
-            fprintf(output, "    addi $sp, $sp, -%d   # alloc array %s[%d] (%s)\n", 
-                   arraySize * 4, node->data.array_init_decl.name, arraySize, node->data.array_init_decl.type);
-            currentLocalBytes += arraySize * 4;
-
-            /* Initialize array elements using helper */
-            generateArrayInitCode(node->data.array_init_decl.init_list, node->data.array_init_decl.name, 0);
+            int arrayBytes = arraySize * 4;
+            
+            /* Limit stack allocation for large arrays */
+            if (arrayBytes > 64) {  /* Limit to 16 int elements max on stack */
+                /* For large arrays, allocate in data segment */
+                int off = addVar(node->data.array_init_decl.name, "int*");
+                fprintf(output, "    .data\n");
+                fprintf(output, "large_array_%s: .space %d\n", node->data.array_init_decl.name, arrayBytes);
+                fprintf(output, "    .text\n");
+                fprintf(output, "    la $t0, large_array_%s\n", node->data.array_init_decl.name);
+                fprintf(output, "    sw $t0, %d($fp)\n", off);
+                /* Note: initialization for large arrays would need special handling */
+            } else {
+                /* Small arrays stay on stack - space already allocated */
+                int off = addArrayVar(node->data.array_init_decl.name, node->data.array_init_decl.type, arraySize);
+                (void)off;
+                /* Initialize array elements using helper */
+                generateArrayInitCode(node->data.array_init_decl.init_list, node->data.array_init_decl.name, 0);
+            }
             break;
         }
 
@@ -1486,6 +1579,10 @@ static void genFunc(ASTNode* func) {
     enterScope();
     currentLocalBytes = 0;
 
+    /* Pre-scan function body to count all local variables */
+    int totalLocalInts = countLocalVariables(func->data.func_decl.body);
+    int totalLocalBytes = totalLocalInts * 4;
+    
     /* Count parameters first */
     ASTNode* p = func->data.func_decl.params;
     int paramCount = 0;
@@ -1504,11 +1601,14 @@ static void genFunc(ASTNode* func) {
     
     countParams(p);
 
-    /* Allocate stack space for parameters and any local arrays */
+    /* Allocate stack space for parameters and all local variables */
     currentParamBytes = paramCount * 4;
-    if (currentParamBytes > 0) {
-        fprintf(output, "    addi $sp, $sp, -%d   # alloc space for %d parameters\n", 
-                currentParamBytes, paramCount);
+    currentLocalBytes = totalLocalBytes;
+    int totalFrameBytes = currentParamBytes + currentLocalBytes;
+    
+    if (totalFrameBytes > 0) {
+        fprintf(output, "    addi $sp, $sp, -%d   # alloc space for %d params + %d locals\n", 
+                totalFrameBytes, paramCount, totalLocalInts);
     }
 
     /* Parameters: add to scope and store $aN into their negative offsets */

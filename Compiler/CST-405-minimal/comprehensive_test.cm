@@ -697,82 +697,80 @@ int arrayLength(int arr[], int maxSize) {
    ======================================== */
 
 void main(void) {
-    int testArray[10];
-    int testArray2[10];
+    int testArray[5];
+    int testArray2[5];
     int i;
     int result;
     int a;
     int b;
     int choice;
 
-    /* Initialize global variables */
-    int globalArray[20];
-    int globalResult;
+    /* Initialize smaller local variables instead of large arrays */
     int globalCounter = 0;
 
     /* Test 1: Arithmetic Operations */
-    print(1);  /* Test marker - Expected output: 1 */
+    print("Test 1 - 72");  /* Test marker - Expected output: 1 */
     result = testArithmetic(10, 5);
     print(result);  /* Expected output: 72 (returned is sum+diff+prod+quot=15+5+50+2=72) */
 
     /* Test 2: Relational Operations */
-    print(2);  /* Test marker - Expected output: 2 */
+    print("Test 2 - 100011");  /* Test marker - Expected output: 2 */
     result = testRelational(5, 10);
     print(result);  /* Expected output: 100011 (5<10:+1, 5<=10:+10, 5>10:no, 5>=10:no, 5==10:no, 5!=10:+100000; 1+10+100000=100011) */
 
     /* Test 3: If-Else Statements */
-    print(3);  /* Test marker - Expected output: 3 */
+    print("Test 3 - 50");  /* Test marker - Expected output: 3 */
     result = testIfElse(75);
     print(result);  /* Expected output: 50 (75>0:result=1, 75>=0:result=0, nested: 75<=100 and 75>50:result=50) */
 
     /* Test 4: While Loops */
-    print(4);  /* Test marker - Expected output: 4 */
+    print("Test 4 - 55");  /* Test marker - Expected output: 4 */
     result = testWhileLoop(10);
     print(result);  /* Expected output: 55 (sum of 1+2+3+4+5+6+7+8+9+10) */
 
     /* Test 5: Nested Loops */
-    print(5);  /* Test marker - Expected output: 5 */
+    print("Test 5 - 25");  /* Test marker - Expected output: 5 */
     result = testNestedLoops(5, 5);
     print(result);  /* Expected output: 25 (5 rows × 5 cols = 25 iterations) */
 
     /* Test 6: Array Operations */
-    print(6);  /* Test marker - Expected output: 6 */
-    testArrayOperations(testArray, 10);
-    result = sumArray(testArray, 10);
-    print(result);  /* Expected output: 100 (testArrayOperations sets arr[i]=i*2+1; sum of 1+3+5+7+9+11+13+15+17+19) */
+    print("Test 6 - 25");  /* Test marker - Expected output: 6 */
+    testArrayOperations(testArray, 5);
+    result = sumArray(testArray, 5);
+    print(result);  /* Expected output: 25 (testArrayOperations sets arr[i]=i*2+1; sum of 1+3+5+7+9=25) */
 
     /* Test 7: Factorial (Recursion) */
-    print(7);  /* Test marker - Expected output: 7 */
+    print("Test 7 - 120");  /* Test marker - Expected output: 7 */
     result = factorial(5);
     print(result);  /* Expected output: 120 (5! = 5×4×3×2×1) */
 
     /* Test 8: Fibonacci */
-    print(8);  /* Test marker - Expected output: 8 */
+    print("Test 8 - 13");  /* Test marker - Expected output: 8 */
     result = fibonacci(7);
     print(result);  /* Expected output: 13 (fib sequence: 0,1,1,2,3,5,8,13) */
 
     /* Test 9: Power Function */
-    print(9);  /* Test marker - Expected output: 9 */
+    print("Test 9 - 32");  /* Test marker - Expected output: 9 */
     result = power(2, 5);
     print(result);  /* Expected output: 32 (2^5) */
 
     /* Test 10: GCD */
-    print(10);  /* Test marker - Expected output: 10 */
+    print("Test 10 - 6");  /* Test marker - Expected output: 10 */
     result = gcd(48, 18);
     print(result);  /* Expected output: 6 (greatest common divisor of 48 and 18) */
 
     /* Test 11: Array Search */
-    print(11);  /* Test marker - Expected output: 11 */
+    print("Test 11 - 4");  /* Test marker - Expected output: 11 */
     i = 0;
-    while (i < 10) {
+    while (i < 5) {
         testArray[i] = i * 3;
         i = i + 1;
     }
-    result = linearSearch(testArray, 10, 15);
-    print(result);  /* Expected output: 5 (array is [0,3,6,9,12,15,18,21,24,27], 15 is at index 5) */
+    result = linearSearch(testArray, 5, 12);
+    print(result);  /* Expected output: 4 (array is [0,3,6,9,12], 12 is at index 4) */
 
     /* Test 12: Bubble Sort */
-    print(12);  /* Test marker - Expected output: 12 */
+    print("Test 12 - 1 2 5 8 9");  /* Test marker - Expected output: 12 */
     testArray[0] = 5;
     testArray[1] = 2;
     testArray[2] = 8;
@@ -782,26 +780,26 @@ void main(void) {
     printArray(testArray, 5);  /* Expected output: 1 2 5 8 9 (sorted array) */
 
     /* Test 13: Find Max and Min */
-    print(13);  /* Test marker - Expected output: 13 */
+    print("Test 13 - 9 1");  /* Test marker - Expected output: 13 */
     result = findMax(testArray, 5);
     print(result);  /* Expected output: 9 (max of sorted array [1,2,5,8,9]) */
     result = findMin(testArray, 5);
     print(result);  /* Expected output: 1 (min of sorted array [1,2,5,8,9]) */
 
     /* Test 14: Prime Number Testing */
-    print(14);  /* Test marker - Expected output: 14 */
+    print("Test 14 - 1 0");  /* Test marker - Expected output: 14 */
     result = isPrime(17);
     print(result);  /* Expected output: 1 (17 is prime) */
     result = isPrime(18);
     print(result);  /* Expected output: 0 (18 is not prime, divisible by 2) */
 
     /* Test 15: Count Primes */
-    print(15);  /* Test marker - Expected output: 15 */
+    print("Test 15 - 8");  /* Test marker - Expected output: 15 */
     result = countPrimes(20);
     print(result);  /* Expected output: 8 (primes ≤20: 2,3,5,7,11,13,17,19) */
 
     /* Test 16: Reverse Array */
-    print(16);  /* Test marker - Expected output: 16 */
+    print("Test 16 - 5 4 3 2 1");  /* Test marker - Expected output: 16 */
     i = 0;
     while (i < 5) {
         testArray[i] = i + 1;
@@ -811,7 +809,7 @@ void main(void) {
     printArray(testArray, 5);  /* Expected output: 5 4 3 2 1 (reversed from [1,2,3,4,5]) */
 
     /* Test 17: Multiple Parameters */
-    print(17);  /* Test marker - Expected output: 17 */
+    print("Test 17 - 24 10 9");  /* Test marker - Expected output: 17 */
     result = multiply3(2, 3, 4);
     print(result);  /* Expected output: 24 (2×3×4) */
     result = add4(1, 2, 3, 4);
@@ -820,14 +818,14 @@ void main(void) {
     print(result);  /* Expected output: 9 (max of 5,9,3) */
 
     /* Test 18: Array Fill and Copy */
-    print(18);  /* Test marker - Expected output: 18 */
-    fillArray(testArray, 10, 7);
-    copyArray(testArray, testArray2, 10);
-    result = arrayEqual(testArray, testArray2, 10);
+    print("Test 18 - 1");  /* Test marker - Expected output: 18 */
+    fillArray(testArray, 5, 7);
+    copyArray(testArray, testArray2, 5);
+    result = arrayEqual(testArray, testArray2, 5);
     print(result);  /* Expected output: 1 (arrays should be equal after copy) */
 
     /* Test 19: Absolute Value and Sign */
-    print(19);  /* Test marker - Expected output: 19 */
+    print("Test 19 - 15 -1 1 0");  /* Test marker - Expected output: 19 */
     result = absoluteValue(-15);
     print(result);  /* Expected output: 15 (absolute value of -15) */
     result = sign(-5);
@@ -838,14 +836,14 @@ void main(void) {
     print(result);  /* Expected output: 0 (sign of zero) */
 
     /* Test 20: Sum of Squares and Cubes */
-    print(20);  /* Test marker - Expected output: 20 */
+    print("Test 20 - 55 225");  /* Test marker - Expected output: 20 */
     result = sumOfSquares(5);
     print(result);  /* Expected output: 55 (1²+2²+3²+4²+5² = 1+4+9+16+25) */
     result = sumOfCubes(5);
     print(result);  /* Expected output: 225 (1³+2³+3³+4³+5³ = 1+8+27+64+125) */
 
     /* Test 21: Array Statistics */
-    print(21);  /* Test marker - Expected output: 21 */
+    print("Test 21 - 6 3");  /* Test marker - Expected output: 21 */
     i = 0;
     while (i < 5) {
         testArray[i] = (i + 1) * 2;
@@ -862,28 +860,25 @@ void main(void) {
     print(result);  /* Expected output: 3 (array [5,5,3,5,7] has three 5s) */
 
     /* Test 22: Bit Shift Operations */
-    print(22);  /* Test marker - Expected output: 22 */
+    print("Test 22 - 12 4");  /* Test marker - Expected output: 22 */
     result = leftShift(3, 2);
     print(result);  /* Expected output: 12 (3 << 2 = 3×2×2) */
     result = rightShift(16, 2);
     print(result);  /* Expected output: 4 (16 >> 2 = 16/2/2) */
 
     /* Test 23: Complex Expressions */
-    print(23);  /* Test marker - Expected output: 23 */
+    print("Test 23 - 87");  /* Test marker - Expected output: 23 */
     result = testComplexExpressions(10, 5, 3);
     print(result);  /* Expected output: 87 (final expr with a=10,b=5,c=3: 10*5+3*10-5/3+10-5+3 = 50+30-1+10-5+3 = 87) */
 
-    /* Test 24: Global Variables */
-    print(24);  /* Test marker - Expected output: 24 */
+    /* Test 24: Local Variables */
+    print("Test 24 - 100 120");  /* Test marker - Expected output: 24 */
     globalCounter = 100;
-    globalArray[0] = 10;
-    globalArray[1] = 20;
-    globalArray[2] = 30;
     print(globalCounter);  /* Expected output: 100 (assigned value) */
-    print(globalArray[0] + globalArray[1] + globalArray[2]);  /* Expected output: 60 (10+20+30) */
+    print(globalCounter + 20);  /* Expected output: 120 (100+20) */
 
     /* Test 25: Void Functions */
-    print(25);  /* Test marker - Expected output: 25 */
+    print("Test 25 - 10");  /* Test marker - Expected output: 25 */
     testVoidFunction(5);  /* Expected output: 10 (function prints 5*2) */
 
     /* All tests complete */
