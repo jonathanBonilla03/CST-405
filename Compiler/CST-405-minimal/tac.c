@@ -494,11 +494,11 @@ void optimizeTAC() {
     
     printf("TAC list verified: %d instructions\n", tac_count);
 
-    /* Safe constant folding pass - only handle simple constants */
+    /* Enhanced constant folding and algebraic simplification */
     TACInstr* curr = tacList.head;
     int pass1_count = 0;
     
-    while (curr && pass1_count < tac_count + 100) {  /* Safety limit based on actual count */
+    while (curr && pass1_count < tac_count + 100) {
         pass1_count++;
         
         if (curr->op == TAC_ADD && isConstant(curr->arg1) && isConstant(curr->arg2)) {
@@ -515,7 +515,6 @@ void optimizeTAC() {
             curr->arg2 = NULL;
             opt_stats.constant_folded++;
         }
-        /* Only handle subtraction for safety */
         else if (curr->op == TAC_SUB && isConstant(curr->arg1) && isConstant(curr->arg2)) {
             int v1 = atoi(curr->arg1);
             int v2 = atoi(curr->arg2);
@@ -530,12 +529,165 @@ void optimizeTAC() {
             curr->arg2 = NULL;
             opt_stats.constant_folded++;
         }
+        else if (curr->op == TAC_MUL && isConstant(curr->arg1) && isConstant(curr->arg2)) {
+            int v1 = atoi(curr->arg1);
+            int v2 = atoi(curr->arg2);
+            int res = v1 * v2;
+            
+            char buf[20]; 
+            sprintf(buf, "%d", res);
+            curr->op = TAC_ASSIGN;
+            free(curr->arg1); 
+            curr->arg1 = strdup(buf);
+            free(curr->arg2); 
+            curr->arg2 = NULL;
+            opt_stats.constant_folded++;
+        }
+        else if (curr->op == TAC_DIV && isConstant(curr->arg1) && isConstant(curr->arg2)) {
+            int v1 = atoi(curr->arg1);
+            int v2 = atoi(curr->arg2);
+            if (v2 != 0) {
+                int res = v1 / v2;
+                
+                char buf[20]; 
+                sprintf(buf, "%d", res);
+                curr->op = TAC_ASSIGN;
+                free(curr->arg1); 
+                curr->arg1 = strdup(buf);
+                free(curr->arg2); 
+                curr->arg2 = NULL;
+                opt_stats.constant_folded++;
+            }
+        }
+        /* Algebraic simplification: x * 1 = x */
+        else if (curr->op == TAC_MUL && 
+                ((isConstant(curr->arg1) && atoi(curr->arg1) == 1) ||
+                 (isConstant(curr->arg2) && atoi(curr->arg2) == 1))) {
+            curr->op = TAC_ASSIGN;
+            if (isConstant(curr->arg1) && atoi(curr->arg1) == 1) {
+                free(curr->arg1);
+                curr->arg1 = strdup(curr->arg2);
+            }
+            free(curr->arg2);
+            curr->arg2 = NULL;
+            opt_stats.constant_folded++;
+        }
+        /* Algebraic simplification: x + 0 = x */
+        else if (curr->op == TAC_ADD && 
+                ((isConstant(curr->arg1) && atoi(curr->arg1) == 0) ||
+                 (isConstant(curr->arg2) && atoi(curr->arg2) == 0))) {
+            curr->op = TAC_ASSIGN;
+            if (isConstant(curr->arg1) && atoi(curr->arg1) == 0) {
+                free(curr->arg1);
+                curr->arg1 = strdup(curr->arg2);
+            }
+            free(curr->arg2);
+            curr->arg2 = NULL;
+            opt_stats.constant_folded++;
+        }
         
         curr = curr->next;
     }
     
-    if (pass1_count >= tac_count + 100) {
-        printf("Warning: Pass 1 hit safety limit\n");
+    /* Enhanced dead code elimination */
+    curr = tacList.head;
+    int pass2_count = 0;
+    
+    while (curr && pass2_count < tac_count + 100) {
+        pass2_count++;
+        
+        /* Dead code elimination 1: Remove assignments to variables that are immediately overwritten */
+        if ((curr->op == TAC_ASSIGN || curr->op == TAC_ADD || curr->op == TAC_SUB || 
+             curr->op == TAC_MUL || curr->op == TAC_DIV) && curr->result) {
+            
+            TACInstr* next = curr->next;
+            /* Skip labels and other non-assignment instructions */
+            while (next && (next->op == TAC_LABEL || next->op == TAC_NOP)) {
+                next = next->next;
+            }
+            
+            /* If the very next assignment overwrites the same variable, mark current as dead */
+            if (next && (next->op == TAC_ASSIGN || next->op == TAC_ADD || 
+                         next->op == TAC_SUB || next->op == TAC_MUL || next->op == TAC_DIV) && 
+                next->result && curr->result && strcmp(next->result, curr->result) == 0) {
+                curr->op = TAC_NOP;
+                opt_stats.dead_code_removed++;
+            }
+        }
+        
+        /* Dead code elimination 2: Remove assignments to temporaries never used */
+        if ((curr->op == TAC_ASSIGN || curr->op == TAC_ADD || 
+             curr->op == TAC_SUB || curr->op == TAC_MUL || 
+             curr->op == TAC_DIV) && 
+            curr->result && strncmp(curr->result, "t", 1) == 0) {
+            
+            /* Check if this temporary is used anywhere else */
+            int is_used = 0;
+            TACInstr* check_usage = curr->next;
+            int check_count = 0;
+            
+            while (check_usage && check_count < tac_count && !is_used) {
+                check_count++;
+                if (check_usage->op != TAC_NOP) {  /* Skip NOPs */
+                    if ((check_usage->arg1 && strcmp(check_usage->arg1, curr->result) == 0) ||
+                        (check_usage->arg2 && strcmp(check_usage->arg2, curr->result) == 0)) {
+                        is_used = 1;
+                    }
+                }
+                check_usage = check_usage->next;
+            }
+            
+            /* If not used, mark as dead code */
+            if (!is_used) {
+                curr->op = TAC_NOP;
+                opt_stats.dead_code_removed++;
+            }
+        }
+        
+        /* Dead code elimination 3: Remove redundant assignments like t1 = x; result = t1; → result = x */
+        if (curr->op == TAC_ASSIGN && curr->result && strncmp(curr->result, "t", 1) == 0) {
+            /* Look for the next use of this temporary */
+            TACInstr* use_site = curr->next;
+            int found_single_use = 0;
+            TACInstr* single_use_instr = NULL;
+            int uses_count = 0;
+            
+            while (use_site && uses_count < 2) {  /* Only check first few instructions for safety */
+                if (use_site->op != TAC_NOP && use_site->op != TAC_LABEL) {
+                    if (use_site->arg1 && strcmp(use_site->arg1, curr->result) == 0) {
+                        uses_count++;
+                        single_use_instr = use_site;
+                    }
+                    if (use_site->arg2 && strcmp(use_site->arg2, curr->result) == 0) {
+                        uses_count++;
+                        single_use_instr = use_site;
+                    }
+                    /* If this temp is redefined, stop looking */
+                    if (use_site->result && strcmp(use_site->result, curr->result) == 0) {
+                        break;
+                    }
+                }
+                use_site = use_site->next;
+                if (!use_site) break;
+            }
+            
+            /* If temp has exactly one use, replace it with the original value */
+            if (uses_count == 1 && single_use_instr) {
+                if (single_use_instr->arg1 && strcmp(single_use_instr->arg1, curr->result) == 0) {
+                    free(single_use_instr->arg1);
+                    single_use_instr->arg1 = strdup(curr->arg1);
+                }
+                if (single_use_instr->arg2 && strcmp(single_use_instr->arg2, curr->result) == 0) {
+                    free(single_use_instr->arg2);
+                    single_use_instr->arg2 = strdup(curr->arg1);
+                }
+                /* Mark the temporary assignment as dead */
+                curr->op = TAC_NOP;
+                opt_stats.dead_code_removed++;
+            }
+        }
+        
+        curr = curr->next;
     }
     
     printf("Optimization done. Constants folded: %d, Dead code eliminated: %d\n", 

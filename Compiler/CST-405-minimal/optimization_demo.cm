@@ -1,0 +1,125 @@
+/*
+ * Optimization Demonstration for C-Minus Compiler
+ * CST-405 Compiler Design
+ *
+ * This file demonstrates significant optimizations:
+ * 1. Constant folding and propagation
+ * 2. Dead code elimination
+ * 3. Loop invariant code motion
+ * 4. Algebraic simplification
+ * 5. Redundant expression elimination
+ */
+
+/* Function with if-statements demonstrating multiple optimizations */
+int testOptimizedConditions(int x) {
+    int result;
+    int constant1;
+    int constant2; 
+    int deadVariable;
+    int temp;
+
+    /* Constant folding opportunity: 5 + 3 * 2 = 11 */
+    constant1 = 5 + 3 * 2;
+    
+    /* Constant propagation opportunity */
+    constant2 = constant1 + 4;  /* Should become 15 */
+    
+    /* Dead code - this variable is never used */
+    deadVariable = 100 * 50;
+    
+    /* Algebraic simplification: x * 1 = x */
+    temp = x * 1;
+    
+    /* Multiple constant expressions in conditions */
+    if (constant2 > 10) {  /* 15 > 10 is always true */
+        result = temp + constant1;  /* x + 11 */
+    } else {
+        /* Dead code - this branch is never taken */
+        result = 0;
+    }
+    
+    /* Another constant condition */
+    if (2 + 2 == 4) {  /* Always true */
+        result = result + 1;
+    }
+    
+    /* Redundant expression elimination */
+    temp = x + constant1;  /* x + 11 */
+    if (x > 0) {
+        result = temp;  /* Should reuse x + 11 */
+    } else {
+        result = temp - 5;  /* x + 11 - 5 = x + 6 */
+    }
+    
+    return result;
+}
+
+/* Function with while loop demonstrating loop optimizations */
+int testOptimizedLoop(int n) {
+    int sum;
+    int i;
+    int invariant;
+    int constant;
+    int multiplier;
+    
+    sum = 0;
+    i = 0;
+    
+    /* Loop invariant - computed once before loop */
+    invariant = 10 * 5;  /* Constant folding: becomes 50 */
+    
+    /* Constant that doesn't change in loop */
+    constant = 3 + 2;  /* Constant folding: becomes 5 */
+    
+    /* Loop with multiple optimization opportunities */
+    while (i < n) {
+        /* Loop invariant code motion - invariant should move out */
+        multiplier = invariant + constant;  /* 50 + 5 = 55, move out of loop */
+        
+        /* Algebraic simplification: i * 1 = i */
+        sum = sum + i * 1;
+        
+        /* More algebraic simplification: i + 0 = i */
+        sum = sum + (i + 0);
+        
+        /* Strength reduction opportunity: multiplication by constant */
+        sum = sum + multiplier;  /* Add loop invariant */
+        
+        /* Simple increment */
+        i = i + 1;
+    }
+    
+    /* Dead code after loop */
+    multiplier = 999;  /* Never used after assignment */
+    
+    /* Constant folding in return */
+    return sum + (2 * 3);  /* sum + 6 */
+}
+
+/* Main function to test both optimization scenarios */
+void main() {
+    int result1;
+    int result2;
+    int testValue;
+    
+    /* Test value with constant expression */
+    testValue = 8 + 2;  /* Constant folding: becomes 10 */
+    
+    print(1);  /* Test marker - Expected output: 1 */
+    
+    /* Call function with if-statement optimizations */
+    result1 = testOptimizedConditions(testValue);
+    print(result1);  /* Expected output: 21 (with x=10, follows if-branches and final temp assignment) */
+    
+    print(2);  /* Test marker - Expected output: 2 */
+    
+    /* Call function with loop optimizations */
+    result2 = testOptimizedLoop(5);
+    print(result2);  /* Expected output: 301 (loop sum with optimizations applied) */
+    
+    print(3);  /* Test marker - Expected output: 3 */
+    
+    /* Final computation with more constant folding */
+    result1 = result1 + (4 * 5 - 2);  /* +18 after constant folding */
+    print(result1);  /* Expected output: 39 (21 + 18) */
+}
