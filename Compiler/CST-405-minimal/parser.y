@@ -5,6 +5,8 @@
 #include <string.h>
 #include <stdbool.h>
 #include "ast.h"
+#include "semantic.h"
+#include "symtab.h"
 
 extern int yylex();
 extern int yyparse();
@@ -117,6 +119,11 @@ stmt:
     | retry_stmt
     | break_stmt
     | expr ';'                  { $$ = $1; }  /* Allow function calls as statements */
+    | error ';'                 { 
+          reportSpecificError(ERROR_MISSING_SEMICOLON, "");
+          yyerrok; 
+          $$ = NULL; 
+      }
     ;
 
 return_stmt:
@@ -136,29 +143,158 @@ block:
 
 /* --- Declarations --- */
 decl:
-      INT ID ';'                { $$ = createDecl("int", $2); free($2); }
-    | FLOAT ID ';'              { $$ = createDecl("float", $2); free($2); }
-    | BOOL ID ';'               { $$ = createDecl("bool", $2); free($2); }
-    | CHAR ID ';'               { $$ = createDecl("char", $2); free($2); }
-    | STRING ID ';'             { $$ = createDecl("string", $2); free($2); }
-    | INT ID '=' expr ';'       { $$ = createDeclInit("int", $2, $4); free($2); }
-    | FLOAT ID '=' expr ';'     { $$ = createDeclInit("float", $2, $4); free($2); }
-    | BOOL ID '=' expr ';'      { $$ = createDeclInit("bool", $2, $4); free($2); }
-    | CHAR ID '=' expr ';'      { $$ = createDeclInit("char", $2, $4); free($2); }
-    | STRING ID '=' expr ';'    { $$ = createDeclInit("string", $2, $4); free($2); }
-    | INT ID '[' NUM ']' ';'    { $$ = createArrayDecl("int", $2, $4); free($2); }
-    | FLOAT ID '[' NUM ']' ';'  { $$ = createArrayDecl("float", $2, $4); free($2); }
-    | CHAR ID '[' NUM ']' ';'   { $$ = createArrayDecl("char", $2, $4); free($2); }
-    | INT ID '[' NUM ']' '=' '{' init_list '}' ';'    { $$ = createArrayInitDecl("int", $2, $4, $8); free($2); }
-    | FLOAT ID '[' NUM ']' '=' '{' init_list '}' ';'  { $$ = createArrayInitDecl("float", $2, $4, $8); free($2); }
-    | CHAR ID '[' NUM ']' '=' '{' init_list '}' ';'   { $$ = createArrayInitDecl("char", $2, $4, $8); free($2); }
+      INT ID ';'                { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          $$ = createDecl("int", $2); 
+          free($2); 
+      }
+    | FLOAT ID ';'              { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          $$ = createDecl("float", $2); 
+          free($2); 
+      }
+    | BOOL ID ';'               { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          $$ = createDecl("bool", $2); 
+          free($2); 
+      }
+    | CHAR ID ';'               { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          $$ = createDecl("char", $2); 
+          free($2); 
+      }
+    | STRING ID ';'             { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          $$ = createDecl("string", $2); 
+          free($2); 
+      }
+    | INT ID '=' expr ';'       { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          char* exprType = getExpressionType($4);
+          checkAssignmentType("int", exprType);
+          $$ = createDeclInit("int", $2, $4); 
+          free($2); 
+      }
+    | FLOAT ID '=' expr ';'     { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          char* exprType = getExpressionType($4);
+          checkAssignmentType("float", exprType);
+          $$ = createDeclInit("float", $2, $4); 
+          free($2); 
+      }
+    | BOOL ID '=' expr ';'      { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          char* exprType = getExpressionType($4);
+          checkAssignmentType("bool", exprType);
+          $$ = createDeclInit("bool", $2, $4); 
+          free($2); 
+      }
+    | CHAR ID '=' expr ';'      { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          char* exprType = getExpressionType($4);
+          checkAssignmentType("char", exprType);
+          $$ = createDeclInit("char", $2, $4); 
+          free($2); 
+      }
+    | STRING ID '=' expr ';'    { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          char* exprType = getExpressionType($4);
+          checkAssignmentType("string", exprType);
+          $$ = createDeclInit("string", $2, $4); 
+          free($2); 
+      }
+    | INT ID '[' NUM ']' ';'    { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          $$ = createArrayDecl("int", $2, $4); 
+          free($2); 
+      }
+    | FLOAT ID '[' NUM ']' ';'  { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          $$ = createArrayDecl("float", $2, $4); 
+          free($2); 
+      }
+    | CHAR ID '[' NUM ']' ';'   { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          $$ = createArrayDecl("char", $2, $4); 
+          free($2); 
+      }
+    | INT ID '[' NUM ']' '=' '{' init_list '}' ';'    { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          $$ = createArrayInitDecl("int", $2, $4, $8); 
+          free($2); 
+      }
+    | FLOAT ID '[' NUM ']' '=' '{' init_list '}' ';'  { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          $$ = createArrayInitDecl("float", $2, $4, $8); 
+          free($2); 
+      }
+    | CHAR ID '[' NUM ']' '=' '{' init_list '}' ';'   { 
+          if (isInCurrentScope($2)) {
+              reportSpecificError(ERROR_DUPLICATE_VAR, $2);
+          }
+          $$ = createArrayInitDecl("char", $2, $4, $8); 
+          free($2); 
+      }
     ;
 
 /* --- Assignments --- */
 assign:
-      ID '=' expr ';'           { $$ = createAssign($1, $3); free($1); }
-    | ID '[' expr ']' '=' expr ';'
-                                { $$ = createArrayAssign($1, $3, $6); free($1); }
+      ID '=' expr ';'           { 
+          Symbol* sym = lookupSymbol($1);
+          if (!sym) {
+              reportSpecificError(ERROR_UNDECLARED_VAR, $1);
+          } else {
+              char* exprType = getExpressionType($3);
+              checkAssignmentType(sym->type, exprType);
+          }
+          $$ = createAssign($1, $3); 
+          free($1); 
+      }
+    | ID '[' expr ']' '=' expr ';'  { 
+          Symbol* sym = lookupSymbol($1);
+          if (!sym) {
+              reportSpecificError(ERROR_UNDECLARED_VAR, $1);
+          } else if (!sym->isArray) {
+              reportSpecificError(ERROR_UNDECLARED_VAR, $1);
+          } else {
+              char* indexType = getExpressionType($3);
+              checkArrayIndexType(indexType);
+              char* exprType = getExpressionType($6);
+              checkAssignmentType(sym->type, exprType);
+          }
+          $$ = createArrayAssign($1, $3, $6); 
+          free($1); 
+      }
     ;
 
 /* --- Initialization Lists --- */
@@ -229,8 +365,14 @@ expr:
     | NOT expr                  { $$ = createUnaryOp(UNOP_NOT, $2); }
 
     /* Function calls */
-    | ID '(' arg_list ')'       { $$ = createFuncCall($1, $3); }
-    | ID '(' ')'                { $$ = createFuncCall($1, NULL); }
+    | ID '(' arg_list ')'       { 
+          checkFunctionCall($1, $3);
+          $$ = createFuncCall($1, $3); 
+      }
+    | ID '(' ')'                { 
+          checkFunctionCall($1, NULL);
+          $$ = createFuncCall($1, NULL); 
+      }
     ;
 
 arg_list:
@@ -241,6 +383,25 @@ arg_list:
 %%
 
 void yyerror(const char* s) {
-    fprintf(stderr, "Syntax Error at line %d: %s (near \"%s\")\n",
-            yylineno, s, yytext ? yytext : "<null>");
+    semantic_errors++;
+    
+    /* Specific error detection based on context */
+    if (yytext) {
+        if (strcmp(yytext, "}") == 0) {
+            reportSpecificError(ERROR_MISMATCHED_BRACE, "Unexpected closing brace - missing opening brace or extra closing brace");
+        } else if (strcmp(yytext, "{") == 0) {
+            reportSpecificError(ERROR_MISSING_SEMICOLON, "");
+            printf("   Location: Before '{' - missing semicolon at end of previous statement\n");
+        } else if (strstr(yytext, "\n") || strlen(yytext) == 0) {
+            reportSpecificError(ERROR_MISSING_SEMICOLON, "");
+            printf("   Location: Line %d - statement not properly terminated\n", yylineno);
+        } else {
+            /* Generic syntax error for other cases */
+            printf("✗ Syntax Error at line %d: %s (near \"%s\")\n",
+                   yylineno, s, yytext);
+            printf("   Check syntax rules for the C-Minus language\n");
+        }
+    } else {
+        printf("✗ Syntax Error at line %d: %s\n", yylineno, s);
+    }
 }

@@ -4,7 +4,7 @@ YACC = bison
 CFLAGS = -g -Wall
 
 TARGET = minicompiler
-OBJS = lex.yy.o parser.tab.o main.o ast.o symtab.o codegen.o tac.o
+OBJS = lex.yy.o parser.tab.o main.o ast.o symtab.o codegen.o tac.o semantic.o
 
 all: $(TARGET)
 
@@ -28,6 +28,9 @@ main.o: main.c ast.h codegen.h tac.h
 
 ast.o: ast.c ast.h
 	$(CC) $(CFLAGS) -c ast.c
+
+semantic.o: semantic.c semantic.h ast.h symtab.h
+	$(CC) $(CFLAGS) -c semantic.c
 
 symtab.o: symtab.c symtab.h
 	$(CC) $(CFLAGS) -c symtab.c

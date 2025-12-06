@@ -10,6 +10,7 @@
 #include "codegen.h"
 #include "tac.h"
 #include "symtab.h"
+#include "semantic.h"
 #include "benchmark.c"
 
 extern int yyparse();
@@ -184,16 +185,21 @@ int main(int argc, char* argv[]) {
         printf("└──────────────────────────────────────────────────────────┘\n");
     }
 
+    /* Initialize symbol table for semantic analysis during parsing */
+    initSymTab();
+
     if (yyparse() != 0) {
         printf("✗ Compilation failed during syntax analysis.\n");
-        if (!flags.quiet_mode) {
-            printf("Note: Specific error details are shown above with line numbers.\n");
+        if (!flags.quiet_mode && semantic_errors == 0) {
+            printf("Note: No specific errors detected. General syntax debugging tips:\n");
             printf("\nQuick debugging tips:\n");
             printf("  • Check the line number mentioned in the error\n");
             printf("  • Look for missing semicolons after statements\n");
             printf("  • Ensure all braces { } are properly matched\n");
             printf("  • Verify variable names are declared before use\n");
             printf("  • Check function call syntax and parameter count\n");
+        } else if (!flags.quiet_mode && semantic_errors > 0) {
+            printf("Note: %d specific error(s) detected above with targeted solutions.\n", semantic_errors);
         }
         fclose(yyin);
         return 1;
