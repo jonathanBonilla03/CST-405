@@ -1,0 +1,42 @@
+/* Project 4 - While Loop and Order of Operations Demo */
+
+int testOrderOfOperations(int a, int b) {
+    int result;
+    
+    /* Test all mathematical operations with proper precedence:
+     * 5 + 4 * 2 - 6 / 3 = 5 + 8 - 2 = 11
+     * Demonstrates: addition, multiplication, subtraction, division
+     * and operator precedence (*, / before +, -) */
+    result = a + b * 2 - 6 / 3;
+    
+    return result;
+}
+
+int testWhileLoop(int n) {
+    int sum;
+    int i;
+    
+    sum = 0;
+    i = 1;
+    
+    /* Sum numbers from 1 to n using while loop */
+    while (i <= n) {
+        sum = sum + i;
+        i = i + 1;
+    }
+    
+    return sum;
+}
+
+void main() {
+    int orderResult;
+    int whileResult;
+    
+    /* Test 1: Order of Operations - demonstrates +, *, -, / */
+    orderResult = testOrderOfOperations(5, 4);
+    print(orderResult); /* Expected: 11 */
+    
+    /* Test 2: While Loop - sum 1 to 5 */
+    whileResult = testWhileLoop(5);
+    print(whileResult); /* Expected: 15 */
+}
