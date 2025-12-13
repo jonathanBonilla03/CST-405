@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "ast.h"
 #include "codegen.h"
 #include "tac.h"
@@ -16,6 +17,15 @@
 extern int yyparse();
 extern FILE* yyin;
 extern ASTNode* root;
+
+/* Compilation timing metrics */
+typedef struct {
+    clock_t parsing_time;
+    clock_t tac_generation_time;
+    clock_t optimization_time;
+    clock_t codegen_time;
+    clock_t total_time;
+} CompilationMetrics;
 
 /* Output control flags */
 typedef struct {
@@ -143,7 +153,10 @@ int main(int argc, char* argv[]) {
     OutputFlags flags;
     char* input_file;
     char* output_file;
+    CompilationMetrics metrics = {0};
+    clock_t start_time, end_time;
     
+    start_time = clock();
     init_ast_memory();
 
     int parse_result = parse_arguments(argc, argv, &flags, &input_file, &output_file);
@@ -188,6 +201,7 @@ int main(int argc, char* argv[]) {
     /* Initialize symbol table for semantic analysis during parsing */
     initSymTab();
 
+    clock_t parse_start = clock();
     if (yyparse() != 0) {
         printf("✗ Compilation failed during syntax analysis.\n");
         if (!flags.quiet_mode && semantic_errors == 0) {
@@ -205,6 +219,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    metrics.parsing_time = clock() - parse_start;
+    
     if (!flags.quiet_mode) {
         printf("✓ Parse successful - syntax is valid!\n\n");
     }
@@ -221,8 +237,10 @@ int main(int argc, char* argv[]) {
     }
 
     /* === PHASE 3: Intermediate Code (TAC) === */
+    clock_t tac_start = clock();
     initTAC();
     generateTAC(root);
+    metrics.tac_generation_time = clock() - tac_start;
     
     if (flags.show_unoptimized_tac && !flags.quiet_mode) {
         printf("┌──────────────────────────────────────────────────────────┐\n");
@@ -235,7 +253,9 @@ int main(int argc, char* argv[]) {
     }
 
     /* === PHASE 4: Optimization === */
+    clock_t opt_start = clock();
     optimizeTAC();
+    metrics.optimization_time = clock() - opt_start;
     
     if (flags.show_optimized_tac && !flags.quiet_mode) {
         printf("┌──────────────────────────────────────────────────────────┐\n");
@@ -258,7 +278,11 @@ int main(int argc, char* argv[]) {
         printf("└──────────────────────────────────────────────────────────┘\n");
     }
 
+    clock_t codegen_start = clock();
     generateMIPS(root, output_file);
+    metrics.codegen_time = clock() - codegen_start;
+    
+    metrics.total_time = clock() - start_time;
 
     FILE* check = fopen(output_file, "r");
     if (check) {
@@ -284,19 +308,36 @@ int main(int argc, char* argv[]) {
         printf("├──────────────────────────────────────────────────────────┤\n");
         printf("│ Final symbol table state:                                │\n");
         printf("└──────────────────────────────────────────────────────────┘\n");
-        // Note: You'll need to implement printSymbolTable() in symtab.c if it doesn't exist
-        // For now, just show that we would display it
-        printf("Symbol table display would go here (implement printSymbolTable() function)\n");
-        printf("\n");
+        printSymbolTable();
+    }
+
+    // Display compilation timing metrics
+    if (!flags.quiet_mode) {
+        printf("┌──────────────────────────────────────────────────────────┐\n");
+        printf("│ COMPILATION TIMING METRICS                                │\n");
+        printf("├──────────────────────────────────────────────────────────┤\n");
+        printf("│ Parsing & Semantic Analysis:  %8.3f ms                │\n", 
+               (double)metrics.parsing_time / CLOCKS_PER_SEC * 1000);
+        printf("│ TAC Generation:              %8.3f ms                │\n", 
+               (double)metrics.tac_generation_time / CLOCKS_PER_SEC * 1000);
+        printf("│ Optimization:                %8.3f ms                │\n", 
+               (double)metrics.optimization_time / CLOCKS_PER_SEC * 1000);
+        printf("│ MIPS Code Generation:        %8.3f ms                │\n", 
+               (double)metrics.codegen_time / CLOCKS_PER_SEC * 1000);
+        printf("├──────────────────────────────────────────────────────────┤\n");
+        printf("│ Total Compilation Time:      %8.3f ms                │\n", 
+               (double)metrics.total_time / CLOCKS_PER_SEC * 1000);
+        printf("└──────────────────────────────────────────────────────────┘\n\n");
     }
 
     if (!flags.quiet_mode) {
-        printf("\n╔════════════════════════════════════════════════════════════╗\n");
+        printf("╔════════════════════════════════════════════════════════════╗\n");
         printf("║              COMPILATION COMPLETED SUCCESSFULLY            ║\n");
         printf("║       Run the output file in a MIPS simulator (e.g. MARS)  ║\n");
         printf("╚════════════════════════════════════════════════════════════╝\n");
     } else {
-        printf("✓ Compilation completed successfully\n");
+        printf("✓ Compilation completed successfully (%.3f ms)\n", 
+               (double)metrics.total_time / CLOCKS_PER_SEC * 1000);
     }
 
     fclose(yyin);

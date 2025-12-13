@@ -71,5 +71,6 @@ int getArraySize(char* name);         /* Return array size */
 void printCurrentScope();             /* Print symbols in current scope */
 void printSymTab();                   /* Alias for printCurrentScope() */
 void printAllScopes();                /* Print all nested scopes */
+void printSymbolTable();              /* Comprehensive symbol table display */
 
 #endif

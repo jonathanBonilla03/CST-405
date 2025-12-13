@@ -306,3 +306,33 @@ void printAllScopes() {
     }
     printf("====================\n\n");
 }
+
+/* === Comprehensive symbol table display for compiler output === */
+void printSymbolTable() {
+    printf("\n┌─── SYMBOL TABLE SUMMARY ────────────────────────────────┐\n");
+    
+    // Count totals across all scopes
+    int totalSymbols = 0;
+    int totalFunctions = 0;
+    int totalVariables = 0;
+    int totalArrays = 0;
+    
+    Scope* s = symtab.currentScope;
+    while (s) {
+        for (int i = 0; i < s->count; i++) {
+            Symbol* sym = &s->vars[i];
+            totalSymbols++;
+            if (sym->isFunction) totalFunctions++;
+            else if (sym->isArray) totalArrays++;
+            else totalVariables++;
+        }
+        s = s->parent;
+    }
+    
+    printf("│ Total Symbols: %d (Functions: %d, Variables: %d, Arrays: %d) │\n",
+           totalSymbols, totalFunctions, totalVariables, totalArrays);
+    printf("└──────────────────────────────────────────────────────────┘\n");
+    
+    // Display detailed scope information
+    printAllScopes();
+}
